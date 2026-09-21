@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# Local secrets and per-machine state
+.env
+.env.*
+.kbsdk/
+
+# Real company documents and question sets stay local, never committed
+data/
+
+# ...but the template of which variables exist is meant to be committed
+!.env.example

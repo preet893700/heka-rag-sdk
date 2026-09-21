@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kbsdk"  # placeholder name - rename before the first release
+version = "0.0.1"
+description = "A configurable, plug-and-play RAG SDK with citations and built-in evaluation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+]
+# Keep the core install light: heavy or provider-specific dependencies live in extras.
+dependencies = [
+  "pydantic>=2.6",
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+kbsdk = "kbsdk.cli:main"
+
+[project.optional-dependencies]
+pdf = ["pypdf>=4.0", "pdfplumber>=0.11"]
+ocr = ["rapidocr>=3.0", "onnxruntime>=1.17", "pillow>=10.0"]
+office = ["python-docx>=1.1", "python-pptx>=1.0", "openpyxl>=3.1"]
+web = ["beautifulsoup4>=4.12"]
+local = ["fastembed>=0.4"]
+gemini = ["langchain-google-genai>=3.0", "langchain-core>=1.0"]
+groq = ["langchain-groq>=1.0", "langchain-core>=1.0"]
+anthropic = ["langchain-anthropic>=1.0", "langchain-core>=1.0"]
+openai = ["langchain-openai>=1.0", "langchain-core>=1.0"]
+ollama = ["langchain-ollama>=1.0", "langchain-core>=1.0"]
+qdrant = ["qdrant-client>=1.9"]
+agentic = ["langgraph>=1.0"]
+otel = ["opentelemetry-api>=1.20"]
+all = [
+  "kbsdk[pdf,ocr,office,web,local,gemini,groq,anthropic,openai,ollama,qdrant,agentic,otel]",
+]
+dev = [
+  "kbsdk[all]",
+  "opentelemetry-sdk>=1.20",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "types-PyYAML",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kbsdk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# `ruff format` owns code layout; E501 would only flag prose it cannot rewrap (docstrings, prompts).
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
