@@ -6,7 +6,7 @@ import pytest
 from conftest import ScriptedLLM, grounded_reply
 from kbsdk import Agent, BudgetExceededError, ConfigError, KnowledgeBase, registry
 from kbsdk.pipelines.verify import verify_answer
-from kbsdk.types import Chunk, ScoredChunk, TraceEvent
+from kbsdk.types import Chunk, Message, ScoredChunk, TraceEvent
 
 SOURCES = [
     ScoredChunk(
@@ -135,6 +135,45 @@ async def test_question_and_answer_text_stay_out_of_traces_by_default(make_agent
     assert "jo@example.com" not in json.dumps(
         [e.model_dump() for e in agent.pipeline.tracers[0].events]
     )
+
+
+MARKER = "zz-private-marker"
+
+
+def echoing_reply(messages, system):
+    """Rewrites, condenses and abstains with text that quotes the user's words."""
+    if "answerable" in (system or ""):
+        return json.dumps(
+            {"answerable": False, "answer": f"Nothing about {MARKER}", "citations": []}
+        )
+    return f"{MARKER} casual leave days"
+
+
+def echoing_config(include_text):
+    return {
+        "retrieval": {"condense_followups": True, "query_transforms": [{"provider": "rewrite"}]},
+        "tracing": [{"provider": "memory", "params": {"include_text": include_text}}],
+    }
+
+
+async def test_no_question_derived_text_reaches_any_trace_event_by_default(make_agent):
+    """Condensed and rewritten queries and the model's abstention note all echo the question."""
+    agent = await make_agent(ScriptedLLM(echoing_reply), **echoing_config(False))
+    history = [Message(role="user", content="hi"), Message(role="assistant", content="hello")]
+    await agent.aask("And for contractors?", history=history)
+    events = agent.pipeline.tracers[0].events
+    assert {"condense", "transform", "abstain"} <= {e.stage for e in events}  # they did run
+    assert MARKER not in json.dumps([e.model_dump() for e in events])
+    retrieve = next(e for e in events if e.name == "retrieve")
+    assert isinstance(retrieve.data["queries"], int)  # a count is not text and is kept
+
+
+async def test_include_text_keeps_the_query_and_abstention_text(make_agent):
+    agent = await make_agent(ScriptedLLM(echoing_reply), **echoing_config(True))
+    history = [Message(role="user", content="hi"), Message(role="assistant", content="hello")]
+    await agent.aask("And for contractors?", history=history)
+    dump = json.dumps([e.model_dump() for e in agent.pipeline.tracers[0].events])
+    assert dump.count(MARKER) >= 3
 
 
 async def test_include_text_keeps_them(make_agent):

@@ -17,7 +17,16 @@ from typing import Any
 from kbsdk.adapters._deps import Settings, require
 from kbsdk.types import TraceEvent
 
-_TEXT_KEYS = {"question", "answer"}
+_TEXT_KEYS = {"question", "answer", "original", "standalone"}
+
+
+def _is_text(event: TraceEvent, key: str, value: Any) -> bool:
+    """Whether `event.data[key]` holds user- or model-written text rather than a count or a name."""
+    if key in _TEXT_KEYS:
+        return True
+    if key == "queries" and isinstance(value, list):  # rewritten queries (retrieve's is a count)
+        return True
+    return key == "reason" and event.name == "model_abstained"  # the model's own words
 
 
 class TracerSettings(Settings):
@@ -25,11 +34,11 @@ class TracerSettings(Settings):
 
 
 def scrub(event: TraceEvent, *, include_text: bool) -> TraceEvent:
-    """A copy of `event` without question/answer text unless asked to keep it."""
-    if include_text or not (_TEXT_KEYS & event.data.keys()):
+    """A copy of `event` without question/answer-derived text unless asked to keep it."""
+    if include_text or not any(_is_text(event, k, v) for k, v in event.data.items()):
         return event
     return event.model_copy(
-        update={"data": {k: v for k, v in event.data.items() if k not in _TEXT_KEYS}}
+        update={"data": {k: v for k, v in event.data.items() if not _is_text(event, k, v)}}
     )
 
 
