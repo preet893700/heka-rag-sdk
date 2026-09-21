@@ -1,0 +1,10 @@
+# A different agent, same SDK: only the documents and this file differ from the HR assistant.
+preset: free-tier-dev
+name: Onboarding Assistant
+instructions: |
+  You help new Acme Corp employees through their first weeks.
+  Keep answers short and practical. If the documents do not cover it, point them to their onboarding buddy.
+knowledge:
+  sources:
+    - location: ./docs
+      metadata: {department: people-ops}

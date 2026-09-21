@@ -1,0 +1,25 @@
+# Does a reranker earn its cost? Compared at a tight context budget (-k 3), where ordering matters most.
+#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants rerank-variants.yaml --retrieval-only -k 3
+# BAAI/bge-reranker-base is ~1 GB (MIT licence); the MiniLM model is ~80 MB (Apache-2.0).
+dense:
+  retrieval: {mode: dense}
+dense+minilm:
+  retrieval: {mode: dense, reranker: {provider: local_cross_encoder}}
+dense+bge-base:
+  retrieval:
+    mode: dense
+    reranker: {provider: local_cross_encoder, params: {model: BAAI/bge-reranker-base}}
+weighted-0.7:
+  retrieval: {mode: hybrid, fusion: weighted, dense_weight: 0.7}
+weighted-0.7+minilm:
+  retrieval:
+    mode: hybrid
+    fusion: weighted
+    dense_weight: 0.7
+    reranker: {provider: local_cross_encoder}
+weighted-0.7+bge-base:
+  retrieval:
+    mode: hybrid
+    fusion: weighted
+    dense_weight: 0.7
+    reranker: {provider: local_cross_encoder, params: {model: BAAI/bge-reranker-base}}

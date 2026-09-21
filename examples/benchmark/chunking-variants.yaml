@@ -1,0 +1,13 @@
+# Which chunking strategy hands the model the passage that actually contains the answer?
+# Dense retrieval only, so that the chunker is the only thing that differs. Needs no API key.
+#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants chunking-variants.yaml --retrieval-only -k 3
+structure-1200:
+  chunker: {provider: structure_aware, params: {chunk_size: 1200, chunk_overlap: 150}}
+structure-600:
+  chunker: {provider: structure_aware, params: {chunk_size: 600, chunk_overlap: 80}}
+fixed-800:
+  chunker: {provider: fixed, params: {chunk_size: 800, chunk_overlap: 100}}
+parent-child:
+  chunker: {provider: parent_child, params: {parent_size: 3200, child_size: 400, child_overlap: 50}}
+semantic:
+  chunker: {provider: semantic, params: {min_chunk_size: 250, max_chunk_size: 1200}}

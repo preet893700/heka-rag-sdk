@@ -1,0 +1,14 @@
+# Which retrieval strategy finds the right passage? Needs no LLM and no API key.
+#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants retrieval-variants.yaml --retrieval-only
+dense:
+  retrieval: {mode: dense}
+sparse-bm25:
+  retrieval: {mode: sparse}
+hybrid-rrf:
+  retrieval: {mode: hybrid}
+hybrid-weighted:
+  retrieval: {mode: hybrid, fusion: weighted, dense_weight: 0.5}
+dense+rerank:
+  retrieval: {mode: dense, reranker: {provider: local_cross_encoder}}
+hybrid+rerank:
+  retrieval: {mode: hybrid, reranker: {provider: local_cross_encoder}}

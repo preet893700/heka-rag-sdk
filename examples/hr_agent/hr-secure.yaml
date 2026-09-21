@@ -1,0 +1,55 @@
+# The HR assistant with the Phase 3 controls switched on: who-sees-what, guardrails, answer verification,
+# tracing and cost tracking. Every choice is a config line; none needs code.
+#
+# Ask with an identity - without one the agent refuses (fail-closed):
+#   agent.ask("...", context=RequestContext(tenant_id="acme", roles=["employee"]))
+preset: free-tier-dev
+name: HR Assistant (secure)
+instructions: |
+  You answer Acme Corp employees' questions about HR policy.
+  When the documents do not cover a question, say so and suggest contacting HR at hr@acme.example.
+
+knowledge:
+  sources:
+    # Tags decide who can see a document. "*" means everyone. An untagged file is visible to nobody.
+    - location: ./docs
+      exclude: [code-of-conduct.md]            # carved out below, so it is never indexed twice
+      metadata: {tenant_id: acme, allowed_roles: ["*"]}
+    - location: ./docs/code-of-conduct.md
+      metadata: {tenant_id: acme, allowed_roles: [hr, manager]}   # narrower: only HR and managers
+
+access:
+  tenant_field: tenant_id
+  roles_field: allowed_roles
+
+guardrails:
+  - provider: pii                      # strip card / ID numbers from questions before they reach the model
+    params: {allow: ['@acme\.example$']}
+  - provider: injection                # refuse "ignore your instructions"; drop poisoned documents
+  - provider: scope
+    params:
+      rules:
+        - name: legal-advice
+          keywords: [lawsuit, sue, solicitor, tribunal]
+          action: escalate
+          message: "That is a matter for HR or Legal directly. Please contact hr@acme.example."
+        - name: medical-emergency
+          keywords: [chest pain, overdose, suicidal]
+          action: escalate
+          message: "If this is an emergency, call your local emergency number now."
+
+generation:
+  verify_answer: true                  # a second pass declines answers the sources do not support
+  verify_action: abstain
+
+tracing:
+  - provider: jsonl                    # question/answer text is NOT written unless include_text: true
+    params: {path: ./.kbsdk/trace.jsonl}
+
+# Prices are yours to supply (dollars per million tokens); with them, answers report their cost and
+# the budget below can stop spending.
+pricing:
+  "gemini:gemini-2.5-flash": {input_per_mtok: 0.30, output_per_mtok: 2.50}
+budget:
+  max_llm_calls_per_question: 6
+  max_total_usd: 5.00

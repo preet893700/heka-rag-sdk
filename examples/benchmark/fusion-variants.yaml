@@ -1,0 +1,14 @@
+# How much should dense (meaning) count versus sparse (exact words) in hybrid search?
+# Tune on --split dev, then confirm on --split test. Needs no API key.
+dense:
+  retrieval: {mode: dense}
+rrf-0.5:
+  retrieval: {mode: hybrid, dense_weight: 0.5}
+rrf-0.7:
+  retrieval: {mode: hybrid, dense_weight: 0.7}
+rrf-0.85:
+  retrieval: {mode: hybrid, dense_weight: 0.85}
+weighted-0.7:
+  retrieval: {mode: hybrid, fusion: weighted, dense_weight: 0.7}
+weighted-0.85:
+  retrieval: {mode: hybrid, fusion: weighted, dense_weight: 0.85}

@@ -1,0 +1,14 @@
+# An HR assistant. Everything that makes it "the HR agent" is in this file and the docs/ folder.
+# Paths are relative to this file. Needs GOOGLE_API_KEY in the environment (see README).
+preset: free-tier-dev
+name: HR Assistant
+instructions: |
+  You answer Acme Corp employees' questions about HR policy.
+  When the documents do not cover a question, say so and suggest contacting HR at hr@acme.example.
+knowledge:
+  sources:
+    - location: ./docs
+      metadata: {department: hr}
+evaluation:
+  thresholds:
+    unanswerable_abstain_rate: 0.8
