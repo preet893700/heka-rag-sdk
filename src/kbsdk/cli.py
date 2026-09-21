@@ -56,9 +56,15 @@ def _cmd_presets(args: argparse.Namespace) -> int:
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
     kb = KnowledgeBase(RAGConfig.from_file(args.config))
-    report = kb.ingest()
-    print(report.summary())
-    return 1 if report.failed else 0
+    failed = False
+    if not args.report_only:
+        report = kb.ingest()
+        print(report.summary())
+        failed = bool(report.failed)
+    if args.report or args.report_only:
+        print()
+        print(kb.analyze().summary())
+    return 1 if failed else 0
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -391,6 +397,14 @@ def build_parser() -> argparse.ArgumentParser:
         "ingest", help="index the configured documents (incremental)", parents=[env]
     )
     add_config(ingest)
+    ingest.add_argument(
+        "--report", action="store_true", help="after indexing, check how each document was read"
+    )
+    ingest.add_argument(
+        "--report-only",
+        action="store_true",
+        help="only check how each document is read: no embedding, no index changes, no API key",
+    )
     ingest.set_defaults(func=_cmd_ingest)
 
     inspect = commands.add_parser(

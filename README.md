@@ -17,7 +17,7 @@ runner.
 > **Not built:** pgvector and other database stores except Qdrant, provider-native citations, more
 > connectors. See *Roadmap*.
 >
-> **Verified vs. not.** Everything is covered by 577 offline tests. **Run live, on Groq
+> **Verified vs. not.** Everything is covered by 632 offline tests. **Run live, on Groq
 > (`openai/gpt-oss-120b`, free tier), once:** grounded generation with verified citations, abstention, the
 > LLM judge, follow-up condensation, rewrite, multi-query, HyDE, answer verification, the agentic loop
 > (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below), `kbsdk eval gen`, and
@@ -101,6 +101,7 @@ Variables already set in the real environment win; only variable *names* are eve
 
 ```
 kbsdk ingest  -c examples/hr_agent/hr.yaml
+kbsdk ingest  -c examples/hr_agent/hr.yaml --report-only                   # how was each document read?
 kbsdk inspect -c examples/hr_agent/hr.yaml "can I work from home?" -k 3   # what the model would read
 kbsdk ask     -c examples/hr_agent/hr.yaml "How many casual leave days do I get?"
 kbsdk eval check examples/hr_agent/questions.jsonl                         # dataset health
@@ -266,6 +267,45 @@ all, a `dev`/`test` split, optional `tags`, `history` and `context` (who is aski
 
 With a `quote` in a gold reference, a "hit" means the returned chunk *contains* that text. An LLM judge is a
 fast proxy, not ground truth: read a sample of its reasons before trusting a number.
+
+### Reading a report honestly
+
+Every report (`kbsdk eval run`) also shows:
+
+* **95% intervals.** With 50-100 questions a score of 0.90 is really "somewhere around 0.82-0.96", so a
+  difference of a few points between two configs is usually noise. Yes/no metrics use a Wilson interval; graded
+  ones (judge scores, reciprocal rank) a rougher normal approximation.
+* **Outcomes.** Each case is put in one bucket saying where it failed: `retrieval_miss` (the expected passage was
+  not retrieved), `wrong_with_right_context` (right passage, wrong answer), `wrong_abstention` (declined although
+  the passage was there), `answered_unanswerable` (hallucinated), `citation_problem`, `error`. Each has a
+  different fix, and the report says where to look. A declined answer whose passage was never retrieved counts as
+  a retrieval miss, since that is the root cause. `correctness=1` with a retrieval miss counts as ok: the answer
+  came from another passage, so the gold label may be incomplete.
+* **By question type.** The same metrics per case `tag`. This is where averages hide problems: on the synthetic
+  benchmark the overall retrieval hit rate was 0.97 (interval 0.90-0.99), yet follow-up questions scored 0.29
+  MRR and answers buried in long documents 0.61.
+
+### Checking how documents were read
+
+Answer quality is capped by extraction quality, and extraction fails silently: a scan becomes zero characters,
+letters come out spaced apart, a header repeated on every page fills the chunks. Before tuning anything:
+
+```
+kbsdk ingest -c hr.yaml --report-only     # no embedding, no index changes, no API key
+kbsdk ingest -c hr.yaml --report          # index, then report
+```
+
+It loads and chunks every file exactly as ingestion does, and lists per file: characters, pages, tables,
+headings, chunks and flags (no text extracted, scanned pages and whether OCR is set, OCR misreads to spot-check,
+very little text per page, no headings in a long document, unreadable or spaced-out text, repeated page
+furniture, fragmented chunks). Across files it notes identical content and files that look like versions of one
+another (`policy_v1.pdf`, `policy_v2.pdf`, `holidays-2025.md`, `holidays-2026.md`): conflicting versions are a
+classic source of confident wrong answers. From Python: `kb.analyze()`.
+
+The checks are heuristics: a flag means "look at this file". They were tuned so that two clean corpora (the
+25-document benchmark and the HR example) report nothing, and are unit-tested against synthetic bad inputs; they
+have **not** been run on real messy PDFs yet.
+
 ### Drafting a starter question set
 
 No real questions yet? `kbsdk eval gen` drafts a set from your indexed documents (needs a model):

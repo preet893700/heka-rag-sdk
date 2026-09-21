@@ -10,7 +10,8 @@ from kbsdk.access import AccessPolicy
 from kbsdk.aio import run_sync
 from kbsdk.config import RAGConfig
 from kbsdk.interfaces import LLM, Cache, Chunker, Embedder, OCREngine, Retriever, VectorStore
-from kbsdk.pipelines.ingest import IngestReport, run_ingest
+from kbsdk.pipelines.health import HealthReport
+from kbsdk.pipelines.ingest import IngestReport, analyze_documents, run_ingest
 from kbsdk.pipelines.retrieve import RetrievalPipeline
 from kbsdk.text import slugify
 from kbsdk.types import Filter, Message, RequestContext, ScoredChunk
@@ -98,6 +99,13 @@ class KnowledgeBase:
         history: Sequence[Message] = (),
     ) -> list[ScoredChunk]:
         return run_sync(self.aretrieve(query, k=k, filter=filter, context=context, history=history))
+
+    async def aanalyze(self) -> HealthReport:
+        """Check how every configured document was read (no model, no index changes)."""
+        return await analyze_documents(self)
+
+    def analyze(self) -> HealthReport:
+        return run_sync(self.aanalyze())
 
     async def acount(self) -> int:
         return await self.store.count()

@@ -7,6 +7,16 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from kbsdk.eval.analysis import (
+    OK,
+    OUTCOMES,
+    TAG_METRICS,
+    Interval,
+    by_tag,
+    metric_intervals,
+    outcome_breakdown,
+    outcome_of,
+)
 from kbsdk.eval.metrics import LOWER_IS_BETTER
 from kbsdk.types import Answer, Usage
 
@@ -37,6 +47,11 @@ class CaseResult(BaseModel):
     judge_notes: dict[str, str] = Field(default_factory=dict)
     error: str | None = None
     seconds: float = 0.0
+
+    @property
+    def outcome(self) -> str:
+        """Where this case failed (or "ok"); see `kbsdk.eval.analysis.OUTCOMES`."""
+        return outcome_of(self)
 
     @property
     def problems(self) -> list[str]:
@@ -116,11 +131,62 @@ class EvalReport(BaseModel):
     def load(cls, path: str | Path) -> EvalReport:
         return cls.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
+    # -- analysis -----------------------------------------------------------------------------
+
+    def intervals(self) -> dict[str, Interval]:
+        """95% intervals for each metric over all cases (see `kbsdk.eval.analysis`)."""
+        return metric_intervals(self.results)
+
+    def outcomes(self) -> dict[str, list[str]]:
+        """Outcome -> case ids: where each case went right or wrong."""
+        return outcome_breakdown(self.results)
+
+    def question_types(self) -> dict[str, dict[str, float]]:
+        """Per tag: `n` and the mean of the headline metrics."""
+        return by_tag(self.results)
+
     # -- rendering ----------------------------------------------------------------------------
 
     def _ordered(self, names: set[str]) -> list[str]:
         known = [m for m in METRIC_ORDER if m in names]
         return known + sorted(names - set(known))
+
+    def _analysis_lines(self) -> list[str]:
+        lines: list[str] = []
+        intervals = self.intervals()
+        shown = [m for m in self._ordered(set(intervals)) if m != "error_rate"]
+        if shown:
+            lines += [
+                "",
+                "95% intervals, all cases (approximate; graded metrics are rougher than yes/no ones)",
+            ]
+            for name in shown:
+                i = intervals[name]
+                lines.append(f"  {name:<28}{i.mean:.2f}  [{i.low:.2f}, {i.high:.2f}]  n={i.n}")
+        outcomes = self.outcomes()
+        if outcomes:
+            total = sum(len(ids) for ids in outcomes.values())
+            lines += ["", "outcomes"]
+            for name, ids in outcomes.items():
+                sample = ", ".join(ids[:6]) + (", ..." if len(ids) > 6 else "")
+                listing = "" if name == OK else f"   {sample}"
+                lines.append(f"  {name:<28}{len(ids):>4}  ({len(ids) / total:>4.0%}){listing}")
+            for name in outcomes:
+                if name != OK:
+                    meaning, hint = OUTCOMES[name]
+                    lines.append(f"    {name}: {meaning}" + (f"; look at: {hint}" if hint else ""))
+        types = self.question_types()
+        if types:
+            columns = [m for m in TAG_METRICS if any(m in row for row in types.values())]
+            lines += [
+                "",
+                "by question type",
+                f"  {'tag':<20}{'n':>4}" + "".join(f"{c:>17}" for c in columns),
+            ]
+            for tag, row in types.items():
+                cells = "".join(f"{row[c]:>17.2f}" if c in row else f"{'-':>17}" for c in columns)
+                lines.append(f"  {tag:<20}{int(row['n']):>4}{cells}")
+        return lines
 
     def to_text(self, baseline: EvalReport | None = None, *, worst: int = 8) -> str:
         deltas = self.compare(baseline) if baseline else {}
@@ -149,6 +215,7 @@ class EvalReport(BaseModel):
             if name in deltas:
                 row += f"   {deltas[name]:+.2f}"
             lines.append(row)
+        lines += self._analysis_lines()
         lines.append("")
         lines.append(
             f"tokens: {self.usage.input_tokens} in / {self.usage.output_tokens} out "
@@ -183,4 +250,26 @@ class EvalReport(BaseModel):
                 cells.append(f"{source[name]:.2f}" if name in source else "-")
             rows.append(f"| {name} | " + " | ".join(cells) + " |")
         head = f"# Evaluation: {self.name}\n\nagent `{self.agent}` on `{self.agent_model}`, {self.created_at}\n\n"
-        return head + "\n".join(rows) + "\n"
+        text = head + "\n".join(rows) + "\n"
+        intervals = self.intervals()
+        shown = [m for m in self._ordered(set(intervals)) if m != "error_rate"]
+        if shown:
+            text += "\n## 95% intervals (all cases)\n\n| metric | mean | low | high | n |\n|---|---|---|---|---|\n"
+            for name in shown:
+                i = intervals[name]
+                text += f"| {name} | {i.mean:.2f} | {i.low:.2f} | {i.high:.2f} | {i.n} |\n"
+        outcomes = self.outcomes()
+        if outcomes:
+            text += "\n## Outcomes\n\n| outcome | cases | which |\n|---|---|---|\n"
+            for name, ids in outcomes.items():
+                which = "" if name == OK else ", ".join(ids[:12])
+                text += f"| {name} | {len(ids)} | {which} |\n"
+        types = self.question_types()
+        if types:
+            columns = [m for m in TAG_METRICS if any(m in row for row in types.values())]
+            text += "\n## By question type\n\n| tag | n | " + " | ".join(columns) + " |\n"
+            text += "|---|---|" + "---|" * len(columns) + "\n"
+            for tag, row in types.items():
+                joined = " | ".join(f"{row[c]:.2f}" if c in row else "-" for c in columns)
+                text += f"| {tag} | {int(row['n'])} | {joined} |\n"
+        return text

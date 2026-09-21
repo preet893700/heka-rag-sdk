@@ -4,6 +4,19 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic versioning once it reaches 1.0;
 until then any minor version may change the public API.
 
+## [Unreleased]
+
+### Added
+- `kbsdk ingest --report` / `--report-only` and `KnowledgeBase.analyze()`: a per-document health report
+  (characters, pages, tables, headings, chunks, scanned/OCR pages, noise heuristics) plus notes on identical
+  or version-like files. `--report-only` needs no embedding model or API key.
+- Evaluation reports now include 95% confidence intervals, a per-case outcome (retrieval miss, wrong answer
+  with the right context, wrong abstention, answered unanswerable, citation problem, error) with hints on
+  where to look, and a breakdown by question type (case tags).
+
+### Fixed
+- The Gemini adapter no longer prints Google's spurious "automatic function calling" notice on every call.
+
 ## [0.1.0] - 2026-09-21
 
 First tagged version. Built in four phases; see the README for what was measured and what was not.

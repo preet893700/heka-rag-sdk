@@ -24,6 +24,7 @@ from kbsdk.adapters.loaders import EXTENSION_LOADERS
 from kbsdk.aio import gather_limited
 from kbsdk.config import SourceConfig
 from kbsdk.errors import ConfigError
+from kbsdk.pipelines.health import FileHealth, HealthReport, cross_document_notes, file_health
 from kbsdk.registry import registry
 from kbsdk.text import embedding_text, stable_hash
 from kbsdk.types import Chunk, Document
@@ -215,11 +216,25 @@ class _Processed:
     chunks: list[Chunk] = field(default_factory=list)
     error: str | None = None
     notes: list[str] = field(default_factory=list)
+    health: FileHealth | None = None  # only when asked for (see analyze_documents)
+    text: str = ""
 
 
-async def _process(kb: KnowledgeBase, item: SourceFile) -> _Processed:
+def _merged_metadata(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Loader metadata for a file that produced several documents: page counts add up."""
+    merged: dict[str, Any] = {}
+    for meta in parts:
+        for key in ("pages", "pages_without_text", "ocr_pages"):
+            if isinstance(meta.get(key), int):
+                merged[key] = merged.get(key, 0) + meta[key]
+    return merged
+
+
+async def _process(kb: KnowledgeBase, item: SourceFile, *, health: bool = False) -> _Processed:
     """Load and chunk one file. Errors are captured so one bad file never aborts the run."""
     result = _Processed(item)
+    texts: list[str] = []
+    metas: list[dict[str, Any]] = []
     try:
         loader = registry.create(
             "loader",
@@ -257,9 +272,38 @@ async def _process(kb: KnowledgeBase, item: SourceFile) -> _Processed:
                     f"layer (scanned); {hint}"
                 )
             result.chunks.extend(await kb.chunker.chunk(document))
+            if health:
+                texts.append(raw.text)
+                metas.append(dict(raw.metadata))
     except Exception as exc:
         result.chunks, result.error = [], f"{type(exc).__name__}: {exc}"
+    if health:
+        if result.error is not None:
+            result.health = FileHealth(path=item.rel, loader=item.loader, error=result.error)
+        else:
+            result.text = "\n\n".join(texts)
+            result.health = file_health(
+                item.rel,
+                item.loader,
+                result.text,
+                _merged_metadata(metas),
+                [len(c.text) for c in result.chunks],
+                ocr_configured=kb.ocr is not None,
+            )
     return result
+
+
+async def analyze_documents(kb: KnowledgeBase) -> HealthReport:
+    """Load and chunk every configured file exactly as ingestion would, and report how each fared.
+
+    Nothing is embedded or written to the index, so this needs no model and no API key.
+    """
+    files, skipped = discover(kb.config.knowledge.sources, ocr_enabled=kb.ocr is not None)
+    results = await gather_limited(files, lambda item: _process(kb, item, health=True), limit=4)
+    report = HealthReport(files=[r.health for r in results if r.health is not None])
+    report.skipped = skipped
+    report.cross_document = cross_document_notes((r.item.rel, r.text) for r in results if r.text)
+    return report
 
 
 async def run_ingest(kb: KnowledgeBase) -> IngestReport:
