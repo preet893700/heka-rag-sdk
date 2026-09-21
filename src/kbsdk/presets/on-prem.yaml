@@ -1,0 +1,22 @@
+# Fully local: no document, question or embedding leaves the machine. Needs a running Ollama server with
+# the chosen model pulled (`ollama pull llama3.1`). Answer quality depends on the local model - measure
+# it with the eval runner before relying on it.
+config_version: 1
+embedder:
+  provider: local
+  params:
+    model: BAAI/bge-small-en-v1.5
+store:
+  provider: local
+retrieval:
+  mode: dense
+  top_k: 20
+  final_k: 5
+generation:
+  llm:
+    provider: ollama
+    params:
+      model: llama3.1
+      base_url: http://localhost:11434
+reliability:
+  timeout_s: 180
