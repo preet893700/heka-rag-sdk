@@ -22,7 +22,9 @@ runner.
 > LLM judge, follow-up condensation, rewrite, multi-query, HyDE, answer verification, the agentic loop
 > (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below), `kbsdk eval gen`, and
 > the REST server (a real uvicorn process with JWT auth, access control and guardrails, called over HTTP).
-> **Never run against a live service:** Gemini, Claude, OpenAI and Ollama calls, the LLM reranker, a remote
+> **Run live on Gemini, more lightly:** `gemini-2.5-flash` generation (single questions) and
+> `gemini-embedding-001` embeddings (retrieval scores below); a full Gemini answer-and-judge evaluation was not
+> completed. **Never run against a live service:** Claude, OpenAI and Ollama calls, the LLM reranker, a remote
 > Qdrant server (embedded mode is tested), and a real OpenTelemetry backend. One model and one small
 > synthetic set prove the plumbing, not general accuracy: measure on your own questions.
 
@@ -340,6 +342,7 @@ only, local models, 66 answerable questions):
 | Setup (k = chunks the model reads) | hit | MRR |
 | ---------------------------------- | --- | --- |
 | dense (k=5) | 0.97 | 0.85 |
+| dense with Gemini embeddings (`gemini-embedding-001`, k=5) | 0.91 | 0.89 |
 | sparse BM25 only | 0.73 | 0.72 |
 | hybrid, equal-weight RRF | 0.85 | 0.81 |
 | hybrid, weighted (dense 0.7) | 0.92 | 0.86 |
