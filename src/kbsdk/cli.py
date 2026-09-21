@@ -1,9 +1,11 @@
-"""Command line: kbsdk ingest | ask | inspect | eval run | eval check | eval gen | eval ablate | presets."""
+"""Command line: kbsdk ingest | ask | inspect | eval run | eval check | eval gen | eval ablate | serve | presets."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
+import os
 import sys
 from collections.abc import Sequence
 from datetime import datetime
@@ -237,6 +239,81 @@ def _cmd_eval_gen(args: argparse.Namespace) -> int:
     return 0
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _required_env(name: str, why: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise KbsdkError(
+            f"{why}: set the {name} environment variable (secrets are never taken from flags)."
+        )
+    return value
+
+
+def _build_auth(args: argparse.Namespace) -> Any:
+    from kbsdk.server import ApiKeyAuth, JwtAuth, NoAuth
+
+    if args.auth == "none":
+        if args.host not in LOOPBACK_HOSTS:
+            raise KbsdkError(
+                f"--auth none is for local development only; refusing to listen on {args.host}. "
+                "Use --auth apikey or --auth jwt."
+            )
+        return NoAuth()
+    if args.auth == "apikey":
+        keys = _required_env("KBSDK_API_KEYS", "--auth apikey needs the allowed keys").split(",")
+        return ApiKeyAuth(keys, trust_caller_context=args.trust_caller_context)
+    if args.trust_caller_context:
+        raise KbsdkError("--trust-caller-context only applies to --auth apikey.")
+    hmac_alg = args.jwt_algorithm.upper().startswith("HS")
+    key = (
+        _required_env(
+            "KBSDK_JWT_SECRET", "--auth jwt with an HS* algorithm needs the shared secret"
+        )
+        if hmac_alg
+        else _required_env("KBSDK_JWT_PUBLIC_KEY", "--auth jwt needs the issuer's public key (PEM)")
+    )
+    return JwtAuth(
+        key,
+        algorithm=args.jwt_algorithm,
+        audience=args.jwt_audience,
+        issuer=args.jwt_issuer,
+        tenant_claim=args.jwt_tenant_claim,
+        roles_claim=args.jwt_roles_claim,
+        user_claim=args.jwt_user_claim,
+    )
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from kbsdk import server
+
+    if args.debug_responses and args.host not in LOOPBACK_HOSTS:
+        raise KbsdkError("--debug-responses exposes retrieved passages; only use it on localhost.")
+    configs = [RAGConfig.from_file(path) for path in args.config]
+    admin_key = os.environ.get("KBSDK_ADMIN_KEY", "").strip() or None
+    app = server.create_app(
+        configs,
+        auth=_build_auth(args),
+        admin_key=admin_key,
+        cors_origins=args.cors_origin or (),
+        ingest_on_startup=not args.no_ingest,
+        request_timeout_s=args.timeout,
+        max_concurrent_requests=args.max_concurrency,
+        expose_debug=args.debug_responses,
+        enable_docs=args.docs,
+    )
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    _err(
+        f"serving {len(configs)} agent(s) on http://{args.host}:{args.port} "
+        f"(auth: {args.auth}, admin endpoints: {'on' if admin_key else 'off'})"
+    )
+    server.serve(app, host=args.host, port=args.port)
+    return 0
+
+
 def _load_variants(path: str) -> dict[str, dict[str, Any]]:
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -331,6 +408,48 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument("--json", action="store_true", help="print the full Answer as JSON")
     ask.add_argument("--no-ingest", action="store_true", help="skip the automatic index update")
     ask.set_defaults(func=_cmd_ask)
+
+    serve = commands.add_parser(
+        "serve", help="serve the agents over HTTP (needs kbsdk[server])", parents=[env]
+    )
+    serve.add_argument(
+        "-c",
+        "--config",
+        action="append",
+        required=True,
+        help="config file (repeat to host several agents)",
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--auth",
+        required=True,
+        choices=["apikey", "jwt", "none"],
+        help="how callers prove who they are (secrets come from KBSDK_API_KEYS / KBSDK_JWT_SECRET / "
+        "KBSDK_JWT_PUBLIC_KEY; KBSDK_ADMIN_KEY enables POST .../ingest)",
+    )
+    serve.add_argument(
+        "--trust-caller-context",
+        action="store_true",
+        help="apikey only: let the calling backend send the end user's identity in the body",
+    )
+    serve.add_argument("--jwt-algorithm", default="HS256")
+    serve.add_argument("--jwt-audience")
+    serve.add_argument("--jwt-issuer")
+    serve.add_argument("--jwt-tenant-claim", default="tenant_id")
+    serve.add_argument("--jwt-roles-claim", default="roles")
+    serve.add_argument("--jwt-user-claim", default="sub")
+    serve.add_argument("--cors-origin", action="append", help="allowed browser origin (repeatable)")
+    serve.add_argument("--no-ingest", action="store_true", help="do not index at startup")
+    serve.add_argument("--timeout", type=float, default=60.0, help="seconds per request")
+    serve.add_argument(
+        "--max-concurrency", type=int, default=16, help="questions in flight per agent"
+    )
+    serve.add_argument("--docs", action="store_true", help="serve /docs and /openapi.json")
+    serve.add_argument(
+        "--debug-responses", action="store_true", help="include retrieved passages (localhost only)"
+    )
+    serve.set_defaults(func=_cmd_serve)
 
     evaluation = commands.add_parser("eval", help="measure accuracy on a question set")
     eval_commands = evaluation.add_subparsers(dest="eval_command", required=True)

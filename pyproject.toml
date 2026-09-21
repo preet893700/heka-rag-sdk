@@ -38,8 +38,9 @@ ollama = ["langchain-ollama>=1.0", "langchain-core>=1.0"]
 qdrant = ["qdrant-client>=1.9"]
 agentic = ["langgraph>=1.0"]
 otel = ["opentelemetry-api>=1.20"]
+server = ["fastapi>=0.115", "uvicorn>=0.30", "pyjwt[crypto]>=2.8"]
 all = [
-  "kbsdk[pdf,ocr,office,web,local,gemini,groq,anthropic,openai,ollama,qdrant,agentic,otel]",
+  "kbsdk[pdf,ocr,office,web,local,gemini,groq,anthropic,openai,ollama,qdrant,agentic,otel,server]",
 ]
 dev = [
   "kbsdk[all]",
@@ -66,6 +67,9 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 # `ruff format` owns code layout; E501 would only flag prose it cannot rewrap (docstrings, prompts).
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.mypy]
 strict = true

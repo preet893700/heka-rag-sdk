@@ -11,7 +11,8 @@ runner.
 > hybrid / agentic retrieval, rerankers, query rewriting and follow-up condensation, grounded answers
 > with verified citations and abstention, **access control and multi-tenancy, guardrails (PII, prompt
 > injection, topic routing), answer verification, tracing, cost tracking and budgets**, Gemini / Groq /
-> Claude / OpenAI / Ollama models, local and Qdrant stores, the CLI, and evaluation + ablation runners.
+> Claude / OpenAI / Ollama models, local and Qdrant stores, the CLI, a REST server, and evaluation, ablation
+> and starter-question-generation runners.
 > **Not built:** pgvector and other database stores except Qdrant, provider-native citations, more
 > connectors. See *Roadmap*.
 >
@@ -41,6 +42,7 @@ pip install "kbsdk[pdf,local,gemini]"   # or only what you need
 | `qdrant`    | Qdrant vector store (embedded or server)                              |
 | `agentic`   | multi-step retrieval (LangGraph)                                      |
 | `otel`      | OpenTelemetry tracing                                                 |
+| `server`    | REST server (`fastapi`, `uvicorn`, `pyjwt`)                           |
 
 The core install needs only `pydantic`, `pyyaml` and `numpy`. A feature whose extra is missing fails with
 the exact `pip install` command to run.
@@ -103,6 +105,8 @@ kbsdk eval check examples/hr_agent/questions.jsonl                         # dat
 kbsdk eval run -c hr.yaml -d questions.jsonl --retrieval-only              # no LLM, no key
 kbsdk eval run -c hr.yaml -d questions.jsonl --baseline old/report.json    # full run, compare
 kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants v.yaml --retrieval-only -k 3
+kbsdk eval gen -c hr.yaml -o questions.jsonl --count 30      # draft a starter question set
+kbsdk serve -c hr.yaml --auth jwt                             # REST server (kbsdk[server])
 ```
 
 ## The pipeline
@@ -187,7 +191,8 @@ PII detection is regex-based: expect misses and some false positives). Write you
   sources do not support (citation checking proves the *quotes* are real, not that the *claims* follow).
   +1 model call per answer; being a model, it can err either way.
 * `tracing: [{provider: jsonl|logging|otel|memory}]` ships each step as an event tagged with a `run_id`.
-  **Question and answer text are stripped by default** (`include_text: true` keeps them); a failing tracer
+  **Text derived from the question is stripped by default** (the question, the answer, condensed and rewritten
+  queries, the model's abstention note; `include_text: true` keeps it); a failing tracer
   never breaks answering.
 * `pricing: {"gemini:gemini-2.5-flash": {input_per_mtok: 0.3, output_per_mtok: 2.5}}` (prices are yours to
   supply) makes `answer.usage.cost_usd` and the eval report show cost. `budget: {max_total_usd,
@@ -204,6 +209,44 @@ PII detection is regex-based: expect misses and some false positives). Write you
 Claude note: current Claude models reject sampling parameters, so the Claude adapter has **no
 `temperature` setting** and never sends one (`max_output_tokens` defaults to 2048). OpenAI reasoning models
 may need `temperature: null`.
+
+## REST server
+
+`pip install "kbsdk[server]"` adds an HTTP layer over your agents, for callers that are not Python:
+
+```
+export KBSDK_JWT_SECRET=...            # HS* secret (or KBSDK_JWT_PUBLIC_KEY for RS*/ES*); >= 32 bytes
+export KBSDK_ADMIN_KEY=...             # optional: enables POST .../ingest
+kbsdk serve -c hr.yaml -c onboarding.yaml --auth jwt --jwt-audience kb --cors-origin https://intranet.example
+```
+```
+POST /v1/agents/{id}/ask      {"question": "...", "history": [{"role": "user", "content": "..."}, ...]}
+POST /v1/agents/{id}/ingest   re-index (admin key in X-Admin-Key; disabled unless configured)
+GET  /v1/agents   /healthz   /readyz
+```
+`{id}` is the slug of the config's `name`. An answer returns `text`, verified `citations`, `abstained` /
+`abstain_reason`, `escalation`, `warnings`, token `usage` and a `request_id` (also the `X-Request-ID` header).
+
+Security decisions, since access control is only as good as the identity it is given:
+
+* **Identity comes from the credential, not the body.** `--auth jwt` verifies the signature (only the
+  configured algorithm; `exp` required; `aud`/`iss` checked when set) and maps claims to tenant, user and roles
+  (`--jwt-tenant-claim`, `--jwt-roles-claim`). A `context` in the body is rejected with 400. `--auth apikey`
+  proves the *application*, not the user; with `--trust-caller-context` your own backend may then vouch for the
+  end user in the body: use that only when the key never reaches a browser. In Python, `CustomAuth(fn)` plugs
+  in your own session/SSO check. `create_app` lets you pass all of this programmatically.
+* **`--auth` is required**, `--auth none` only binds to localhost, and the server refuses to start with no
+  authentication for an agent that has access control. Secrets come from environment variables, never flags.
+* **Errors are generic** (no policy details, paths or provider messages); details go to the server log under
+  the `request_id`. Question and answer text are not logged. Answers are sent `Cache-Control: no-store`.
+* Requests have a timeout (`--timeout`) and a per-agent concurrency cap (`--max-concurrency`); questions are
+  limited to 4000 characters and history to 20 messages. `/docs` is off unless `--docs`; CORS is off unless
+  `--cors-origin`.
+
+Not included: streaming responses, per-user rate limiting and TLS (terminate it at your proxy). Run a single
+worker process: with the local store each process holds its own in-memory copy of the index, so an ingest
+would reach only the worker that received it. A shared store such as a Qdrant server is the way to scale
+out, but that combination has not been tested.
 
 ## Measuring accuracy
 
@@ -374,7 +417,7 @@ Third-party packages can ship adapters through the `kbsdk.plugins` entry-point g
 1. **Next:** run the LLM-dependent features against a real model and benchmark them (`llm-variants.yaml`,
    verification, agentic); agree accuracy targets from real numbers; pgvector once a Postgres is available.
 2. **Later, by demand:** more stores and connectors (SharePoint, Drive, Confluence), multimodal, GraphRAG,
-   provider-native citations, synthetic test-set generation, a REST server and admin app built on the SDK.
+   provider-native citations, streaming answers, an admin app built on the SDK.
 
 ## Development
 
