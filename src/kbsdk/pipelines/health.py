@@ -35,6 +35,7 @@ FRAGMENT_CHUNK_CHARS = 80
 REPLACEMENT_CHAR = chr(0xFFFD)  # what decoders emit for bytes they could not read
 
 _WORD = re.compile(r"[A-Za-z0-9']+")
+_TABLE_SEPARATOR = re.compile(r"\|?[\s:|-]+\|?")
 _VERSION_TOKENS = re.compile(
     r"(?:^|[\s_-])(?:v\d+(?:\.\d+)*|rev\d*|final|draft|copy|old|new|latest|superseded)(?=$|[\s_-])"
     r"|(?:^|[\s_-])(?:19|20)\d{2}(?:[-_]\d{1,2}){0,2}(?=$|[\s_-])|\(\d+\)",
@@ -133,7 +134,12 @@ def _prose(text: str) -> str:
 def repeated_line_share(text: str) -> float:
     """Share of the characters that sit in lines seen three or more times (page headers/footers)."""
     lines = [line.strip() for line in text.splitlines()]
-    lines = [line for line in lines if len(line) >= 12]
+    # Markdown structure (table separators, headings) repeats by nature and is not page furniture.
+    lines = [
+        line
+        for line in lines
+        if len(line) >= 12 and not line.startswith("#") and not _TABLE_SEPARATOR.fullmatch(line)
+    ]
     if not lines:
         return 0.0
     counts = Counter(lines)
@@ -166,7 +172,10 @@ def quality_flags(text: str, *, loader: str) -> list[str]:
                 f"average word length {mean:.1f} is unusual (words split or glued together?)"
             )
     if repeated_line_share(prose) > REPEATED_LINE_CEILING:
-        flags.append("repeated header/footer text fills a large share of the pages")
+        flags.append(
+            "repeated header/footer or boilerplate text fills a large share of the document "
+            "(copies of it compete for the same searches and waste context)"
+        )
     return flags
 
 

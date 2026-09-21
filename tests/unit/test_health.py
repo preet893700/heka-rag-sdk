@@ -42,6 +42,17 @@ def test_repeated_page_furniture_is_measured():
     assert repeated_line_share(PROSE) == 0.0 and repeated_line_share("") == 0.0
 
 
+def test_repeated_markdown_structure_is_not_page_furniture():
+    """Found on 80 real GOV.UK guides: table separators and repeated headings inflated the share."""
+    structure = (
+        "## What you can claim\n| --- | --- |\n| a | b |\nUnique sentence {n} about jury service.\n"
+    )
+    text = "".join(structure.format(n=n) for n in range(8))
+    assert repeated_line_share(text) == 0.0
+    real = "Call the Jury Central Summoning Bureau on the number above.\n" * 4
+    assert repeated_line_share(real + "one unique line of ordinary text here") > 0.5
+
+
 # -- text quality --------------------------------------------------------------------------------
 
 
