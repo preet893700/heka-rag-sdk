@@ -9,6 +9,8 @@ description = "A configurable, plug-and-play RAG SDK with citations and built-in
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
+authors = [{ name = "Hekaos" }]
+maintainers = [{ name = "Hekaos" }]
 keywords = ["rag", "retrieval", "llm", "citations", "evaluation", "knowledge-base"]
 classifiers = [
   # Stops an accidental `twine upload` to the public PyPI; a private index ignores it.

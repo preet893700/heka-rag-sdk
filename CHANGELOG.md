@@ -10,6 +10,7 @@ until then any minor version may change the public API.
 - Renamed from the placeholder `kbsdk` to **`heka-rag-sdk`**: install `heka-rag-sdk`, import
   `heka.rag` (a PEP 420 namespace shared by future `heka.*` packages), command `heka-rag`,
   environment variables `HEKA_RAG_*`, error base class `HekaRagError`, state folder `.heka-rag/`.
+- The licence and package metadata name Hekaos as copyright holder, author and maintainer.
 
 ### Added
 - `kbsdk ingest --report` / `--report-only` and `KnowledgeBase.analyze()`: a per-document health report

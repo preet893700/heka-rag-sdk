@@ -16,7 +16,7 @@ the public PyPI is refused; a private index ignores it.
 | Local state folder | `.heka-rag/` |
 | Plug-in entry-point group | `heka.rag.plugins` |
 
-`heka` is a **PEP 420 namespace package** shared by every Heka distribution (`heka.rag` now, `heka.agents` or
+`heka` is a **PEP 420 namespace package** shared by every Hekaos distribution (`heka.rag` now, `heka.agents` or
 `heka.eval` later). The one rule: no distribution may ship a `heka/__init__.py`, or the namespace breaks for the
 others. This repository keeps its code in `src/heka/rag/` and has no `src/heka/__init__.py`; the build checks in
 section 2 verify that.
@@ -26,7 +26,8 @@ PyPI, an installer that falls back to it (`--extra-index-url`) could be tricked 
 (dependency confusion). Register the name on the public PyPI as a placeholder, or tell consumers to use
 `--index-url` pointing only at your private index.
 
-Put your company's legal name in `LICENSE` (it currently says "the authors").
+`LICENSE` and the package metadata name **Hekaos** as copyright holder and author. If the legal entity needs a
+suffix (Inc., Ltd., ...), change it in `LICENSE` and in `authors`/`maintainers` in `pyproject.toml`.
 
 ## 2. Cut a release
 
