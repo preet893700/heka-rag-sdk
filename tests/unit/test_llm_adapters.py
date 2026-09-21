@@ -179,3 +179,24 @@ def test_build_llm_applies_reliability_settings(monkeypatch):
     assert llm.max_retries == 5
     assert llm.limiter.requests_per_minute == 8
     assert llm.cache is not None
+
+
+def test_gemini_afc_notice_is_hidden_but_other_warnings_from_that_logger_are_not(caplog):
+    import logging
+
+    from kbsdk.adapters.llms import silence_gemini_afc_notice
+
+    silence_gemini_afc_notice()
+    silence_gemini_afc_notice()  # idempotent: one filter, not two
+    genai_logger = logging.getLogger("google_genai.models")
+    assert len(genai_logger.filters) == 1
+    with caplog.at_level(logging.WARNING, logger="google_genai.models"):
+        genai_logger.warning(
+            "Direct use of automatic function calling (AFC) in AsyncModels.generate_content is "
+            "not recommended."
+        )
+        genai_logger.warning("quota is nearly exhausted")
+    assert (
+        "quota is nearly exhausted" in caplog.text
+        and "automatic function calling" not in caplog.text
+    )

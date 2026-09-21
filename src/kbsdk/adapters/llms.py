@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, ClassVar
 
@@ -106,11 +107,27 @@ class LangChainLLM:
                 yield text
 
 
+class _DropAfcNotice(logging.Filter):
+    """Google's client warns about "automatic function calling" on every generate call even when no
+    tools are configured (as here). It reads like a fault to CLI users and is not one."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "automatic function calling (AFC)" not in record.getMessage()
+
+
+def silence_gemini_afc_notice() -> None:
+    """Hide that one notice; other warnings from the same logger still show. Safe to call repeatedly."""
+    genai_logger = logging.getLogger("google_genai.models")
+    if not any(isinstance(f, _DropAfcNotice) for f in genai_logger.filters):
+        genai_logger.addFilter(_DropAfcNotice())
+
+
 class GeminiLLM(LangChainLLM):
     settings_model = GeminiSettings
 
     def __init__(self, settings: GeminiSettings) -> None:
         module = require("langchain_google_genai", stage="llm", provider="gemini", extra="gemini")
+        silence_gemini_afc_notice()
         model = module.ChatGoogleGenerativeAI(
             model=settings.model,
             google_api_key=api_key_from_env(settings.api_key_env, "gemini"),
