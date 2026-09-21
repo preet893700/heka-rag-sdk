@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 BASE = "https://www.irs.gov/pub/irs-pdf/"
-USER_AGENT = "kbsdk-research/0.1 (documentation-testing; respects robots.txt, 1 request/second)"
+USER_AGENT = "heka-rag-research/0.1 (documentation-testing; respects robots.txt, 1 request/second)"
 FILES = [
     # publications
     "p15",

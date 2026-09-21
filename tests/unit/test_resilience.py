@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from kbsdk.resilience import (
+from heka.rag.resilience import (
     AsyncRateLimiter,
     is_retryable,
     retry_after_seconds,

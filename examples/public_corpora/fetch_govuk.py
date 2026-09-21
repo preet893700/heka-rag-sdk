@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 BASE = "https://www.gov.uk"
-USER_AGENT = "kbsdk-research/0.1 (documentation-testing; respects robots.txt, 1 request/second)"
+USER_AGENT = "heka-rag-research/0.1 (documentation-testing; respects robots.txt, 1 request/second)"
 QUERIES = [
     "employment rights",
     "employing staff",

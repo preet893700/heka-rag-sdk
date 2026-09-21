@@ -3,16 +3,16 @@ import json
 import pytest
 
 from conftest import ScriptedLLM, answering_reply, judge_reply
-from kbsdk import Agent, Answer, Chunk, Citation, KnowledgeBase, ScoredChunk
-from kbsdk.eval import EvalCase, EvalDataset, EvalReport, EvalRunner, LLMJudge
-from kbsdk.eval.dataset import SourceRef
-from kbsdk.eval.metrics import (
+from heka.rag import Agent, Answer, Chunk, Citation, KnowledgeBase, ScoredChunk
+from heka.rag.eval import EvalCase, EvalDataset, EvalReport, EvalRunner, LLMJudge
+from heka.rag.eval.dataset import SourceRef
+from heka.rag.eval.metrics import (
     abstention_metrics,
     citation_metrics,
     retrieval_metrics,
     source_matches,
 )
-from kbsdk.types import TraceEvent
+from heka.rag.types import TraceEvent
 
 
 def chunk(
@@ -218,7 +218,7 @@ async def test_unmeasured_threshold_fails_rather_than_passes_silently(kb):
 
 
 async def test_thresholds_default_to_the_agent_config(make_config):
-    from kbsdk import KnowledgeBase
+    from heka.rag import KnowledgeBase
 
     config = make_config(evaluation={"thresholds": {"abstain_correct": 0.99}})
     kb = KnowledgeBase(config)
@@ -316,7 +316,7 @@ async def test_progress_callback(kb):
 
 
 async def test_retrieval_only_eval_needs_no_llm(kb):
-    from kbsdk.eval import run_retrieval_eval
+    from heka.rag.eval import run_retrieval_eval
 
     report = await run_retrieval_eval(kb, dataset(), k=3)
     assert report.counts["cases"] == 2  # the unanswerable case has nothing to retrieve
@@ -328,8 +328,8 @@ async def test_retrieval_only_eval_needs_no_llm(kb):
 async def test_retrieval_only_eval_reports_model_calls_made_by_query_transforms(make_config):
     """Rewrite / multi-query / HyDE / condensation call the model even without generation; that cost
     must show up (it once read "0 llm" for variants that took minutes of model time)."""
-    from kbsdk.eval import run_retrieval_eval
-    from kbsdk.usage import MeteredLLM
+    from heka.rag.eval import run_retrieval_eval
+    from heka.rag.usage import MeteredLLM
 
     config = make_config(retrieval={"query_transforms": [{"provider": "rewrite"}]})
     kb = KnowledgeBase(config)
@@ -344,7 +344,7 @@ async def test_retrieval_only_eval_reports_model_calls_made_by_query_transforms(
 
 
 async def test_retrieval_only_thresholds_ignore_answer_metrics(kb):
-    from kbsdk.eval import run_retrieval_eval
+    from heka.rag.eval import run_retrieval_eval
 
     thresholds = {"retrieval_hit": 0.9, "unanswerable_abstain_rate": 0.9}  # 2nd can't be measured
     report = await run_retrieval_eval(kb, dataset(), thresholds=thresholds)

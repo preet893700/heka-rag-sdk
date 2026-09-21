@@ -1,6 +1,6 @@
 """The Protocols are structural: any class with the right methods conforms, no base class needed."""
 
-from kbsdk.interfaces import Cache, Embedder, Tracer
+from heka.rag.interfaces import Cache, Embedder, Tracer
 
 
 class FakeEmbedder:

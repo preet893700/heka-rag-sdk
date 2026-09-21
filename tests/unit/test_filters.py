@@ -1,7 +1,7 @@
 import pytest
 
-from kbsdk import ConfigError
-from kbsdk.filters import combine, matches, validate_filter
+from heka.rag import ConfigError
+from heka.rag.filters import combine, matches, validate_filter
 
 META = {"region": "EU", "grade": "L3", "roles": ["hr", "all"], "year": 2025, "note": None}
 

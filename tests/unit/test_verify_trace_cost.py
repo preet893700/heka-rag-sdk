@@ -4,9 +4,9 @@ import logging
 import pytest
 
 from conftest import ScriptedLLM, grounded_reply
-from kbsdk import Agent, BudgetExceededError, ConfigError, KnowledgeBase, registry
-from kbsdk.pipelines.verify import verify_answer
-from kbsdk.types import Chunk, Message, ScoredChunk, TraceEvent
+from heka.rag import Agent, BudgetExceededError, ConfigError, KnowledgeBase, registry
+from heka.rag.pipelines.verify import verify_answer
+from heka.rag.types import Chunk, Message, ScoredChunk, TraceEvent
 
 SOURCES = [
     ScoredChunk(
@@ -200,7 +200,7 @@ async def test_jsonl_tracer_appends_lines(make_agent, tmp_path):
 
 async def test_logging_tracer(make_agent, caplog):
     agent = await make_agent(ScriptedLLM(grounded_reply), tracing=[{"provider": "logging"}])
-    with caplog.at_level(logging.INFO, logger="kbsdk.trace"):
+    with caplog.at_level(logging.INFO, logger="heka.rag.trace"):
         await agent.aask("How many days of casual leave?")
     assert any(json.loads(r.message)["stage"] == "answer" for r in caplog.records)
     with pytest.raises(ValueError, match="log level"):
@@ -214,7 +214,7 @@ async def test_a_failing_tracer_never_breaks_answering(make_agent, caplog):
 
     agent = await make_agent(ScriptedLLM(grounded_reply))
     agent.pipeline.tracers = [Broken()]
-    with caplog.at_level(logging.WARNING, logger="kbsdk"):
+    with caplog.at_level(logging.WARNING, logger="heka.rag"):
         answer = await agent.aask("How many days of casual leave?")
     assert not answer.abstained and any("tracer Broken failed" in r.message for r in caplog.records)
 
@@ -235,15 +235,15 @@ async def test_otel_tracer_emits_spans(make_agent):
     agent.pipeline.tracers = [tracer]
     await agent.aask("How many days of casual leave?")
     spans = {s.name: s for s in exporter.get_finished_spans()}
-    assert "kbsdk.answer.answer" in spans and "kbsdk.generate.generate" in spans
-    attributes = spans["kbsdk.answer.answer"].attributes
-    assert attributes["kbsdk.citations"] == 1 and attributes["kbsdk.stage"] == "answer"
-    assert "kbsdk.question" not in attributes  # text is scrubbed by default here too
+    assert "heka.rag.answer.answer" in spans and "heka.rag.generate.generate" in spans
+    attributes = spans["heka.rag.answer.answer"].attributes
+    assert attributes["heka.rag.citations"] == 1 and attributes["heka.rag.stage"] == "answer"
+    assert "heka.rag.question" not in attributes  # text is scrubbed by default here too
     del trace
 
 
 def test_otel_tracer_flattens_awkward_values():
-    from kbsdk.adapters.tracers import _attribute
+    from heka.rag.adapters.tracers import _attribute
 
     assert (
         _attribute(3) == 3
@@ -256,7 +256,7 @@ def test_otel_tracer_flattens_awkward_values():
         and _attribute([]) == "[]"
     )
     event = TraceEvent(stage="s", name="n", data={"question": "q"})
-    from kbsdk.adapters.tracers import scrub
+    from heka.rag.adapters.tracers import scrub
 
     assert (
         "question" not in scrub(event, include_text=False).data
@@ -318,7 +318,7 @@ async def test_a_per_question_call_cap_stops_runaway_loops(make_agent):
 
 
 async def test_eval_reports_show_cost(make_agent):
-    from kbsdk.eval import EvalCase, EvalDataset, EvalRunner, SourceRef
+    from heka.rag.eval import EvalCase, EvalDataset, EvalRunner, SourceRef
 
     agent = await make_agent(ScriptedLLM(grounded_reply), pricing=PRICING)
     dataset = EvalDataset(

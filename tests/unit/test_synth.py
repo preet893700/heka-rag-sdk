@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 
 from conftest import ScriptedLLM
-from kbsdk import KnowledgeBase, RequestContext, registry
-from kbsdk.cli import main
-from kbsdk.eval import SynthOptions, generate_dataset, load_dataset
-from kbsdk.eval.synth import copies_wording, numbers_supported, too_similar
+from heka.rag import KnowledgeBase, RequestContext, registry
+from heka.rag.cli import main
+from heka.rag.eval import SynthOptions, generate_dataset, load_dataset
+from heka.rag.eval.synth import copies_wording, numbers_supported, too_similar
 
 FIRST_SENTENCE = re.compile(r"(?<=[.!?])\s")
 
@@ -159,7 +159,7 @@ async def test_generates_answerable_followup_and_unanswerable_cases(kb):
 
 
 async def test_the_generated_gold_quotes_really_are_in_the_index(kb):
-    from kbsdk.text import quote_in_text
+    from heka.rag.text import quote_in_text
 
     result = await generate(kb, answerable=4, followups=0, unanswerable=0)
     chunks = await kb.store.all_chunks()

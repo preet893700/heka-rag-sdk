@@ -1,4 +1,4 @@
-"""Turn the public MultiDoc2Dial dataset into a kbsdk test bed: documents plus human-written questions.
+"""Turn the public MultiDoc2Dial dataset into a heka-rag-sdk test bed: documents plus human-written questions.
 
 MultiDoc2Dial (Feng et al., EMNLP 2021, CC BY 3.0) holds real US-government web documents (SSA, VA, DMV,
 Student Aid) and dialogues in which people ask about them. Each answerable user question is labelled
@@ -41,7 +41,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from kbsdk import registry
+from heka.rag import registry
 
 MIN_QUESTION_WORDS = 3
 QUOTE_CHARS = 160
@@ -241,7 +241,7 @@ def main() -> None:
         extracted = asyncio.run(extract_texts(target))
 
         # The corpus contains byte-for-byte copies of the same page. Index one of each (what
-        # `kbsdk ingest --report` advises) and point every gold label at that one.
+        # `heka-rag ingest --report` advises) and point every gold label at that one.
         canonical: dict[str, str] = {}
         first_seen: dict[str, str] = {}
         for name in sorted(extracted):

@@ -1,4 +1,4 @@
-# kbsdk
+# heka-rag-sdk
 
 A configurable, plug-and-play RAG SDK for Python. An **agent is a folder of documents plus a config**;
 a new agent is a different folder and config, with no code changes. Every answer carries citations that
@@ -6,8 +6,8 @@ are checked against the source text, the agent declines when the documents don't
 may see which document is enforced inside retrieval, and accuracy is measured with a built-in evaluation
 runner.
 
-> **Status: 0.1.0, ready for a first private release.** `kbsdk` is a placeholder name (one command renames it:
-> see `docs/RELEASING.md`).
+> **Status: 0.1.0, ready for a first private release.** Install `heka-rag-sdk`, import `heka.rag`, run `heka-rag`
+> (naming and the `heka` namespace: see `docs/RELEASING.md`).
 > Works today: ingestion (PDF with tables + OCR, Office, HTML, text), four chunkers, dense / sparse /
 > hybrid / agentic retrieval, rerankers, query rewriting and follow-up condensation, grounded answers
 > with verified citations and abstention, **access control and multi-tenancy, guardrails (PII, prompt
@@ -17,10 +17,10 @@ runner.
 > **Not built:** pgvector and other database stores except Qdrant, provider-native citations, more
 > connectors. See *Roadmap*.
 >
-> **Verified vs. not.** Everything is covered by 632 offline tests. **Run live, on Groq
+> **Verified vs. not.** Everything is covered by 617 offline tests. **Run live, on Groq
 > (`openai/gpt-oss-120b`, free tier), once:** grounded generation with verified citations, abstention, the
 > LLM judge, follow-up condensation, rewrite, multi-query, HyDE, answer verification, the agentic loop
-> (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below), `kbsdk eval gen`, and
+> (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below), `heka-rag eval gen`, and
 > the REST server (a real uvicorn process with JWT auth, access control and guardrails, called over HTTP).
 > **Run live on Gemini, more lightly:** `gemini-2.5-flash` generation (single questions) and
 > `gemini-embedding-001` embeddings (retrieval scores below); a full Gemini answer-and-judge evaluation was not
@@ -31,8 +31,8 @@ runner.
 ## Install
 
 ```
-pip install "kbsdk[all]"                # everything below
-pip install "kbsdk[pdf,local,gemini]"   # or only what you need
+pip install "heka-rag-sdk[all]"                # everything below
+pip install "heka-rag-sdk[pdf,local,gemini]"   # or only what you need
 ```
 
 | Extra       | Adds                                                                  |
@@ -54,7 +54,7 @@ the exact `pip install` command to run.
 ## Quick start
 
 ```python
-from kbsdk import Agent, KnowledgeBase, RAGConfig
+from heka.rag import Agent, KnowledgeBase, RAGConfig
 
 config = RAGConfig.preset(
     "free-tier-dev",  # local embeddings + Gemini; also: high-accuracy, low-cost, on-prem
@@ -88,10 +88,12 @@ Keys are read from the environment (`GOOGLE_API_KEY`, `GROQ_API_KEY`, `ANTHROPIC
 is **opt-in** - nothing is read unless you ask:
 
 ```
-kbsdk ask -c hr.yaml "..." --env-file .env    # CLI (every command that may need a key accepts it)
+heka-rag ask -c hr.yaml "..." --env-file .env    # CLI (every command that may need a key accepts it)
 ```
 ```python
-kbsdk.load_env_file(".env")  # in code
+from heka.rag import load_env_file
+
+load_env_file(".env")  # in code
 ```
 ```yaml
 env_file: .env                                # in a config (relative to the config file)
@@ -102,16 +104,16 @@ Variables already set in the real environment win; only variable *names* are eve
 ## Command line
 
 ```
-kbsdk ingest  -c examples/hr_agent/hr.yaml
-kbsdk ingest  -c examples/hr_agent/hr.yaml --report-only                   # how was each document read?
-kbsdk inspect -c examples/hr_agent/hr.yaml "can I work from home?" -k 3   # what the model would read
-kbsdk ask     -c examples/hr_agent/hr.yaml "How many casual leave days do I get?"
-kbsdk eval check examples/hr_agent/questions.jsonl                         # dataset health
-kbsdk eval run -c hr.yaml -d questions.jsonl --retrieval-only              # no LLM, no key
-kbsdk eval run -c hr.yaml -d questions.jsonl --baseline old/report.json    # full run, compare
-kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants v.yaml --retrieval-only -k 3
-kbsdk eval gen -c hr.yaml -o questions.jsonl --count 30      # draft a starter question set
-kbsdk serve -c hr.yaml --auth jwt                             # REST server (kbsdk[server])
+heka-rag ingest  -c examples/hr_agent/hr.yaml
+heka-rag ingest  -c examples/hr_agent/hr.yaml --report-only                   # how was each document read?
+heka-rag inspect -c examples/hr_agent/hr.yaml "can I work from home?" -k 3   # what the model would read
+heka-rag ask     -c examples/hr_agent/hr.yaml "How many casual leave days do I get?"
+heka-rag eval check examples/hr_agent/questions.jsonl                         # dataset health
+heka-rag eval run -c hr.yaml -d questions.jsonl --retrieval-only              # no LLM, no key
+heka-rag eval run -c hr.yaml -d questions.jsonl --baseline old/report.json    # full run, compare
+heka-rag eval ablate -c bench.yaml -d questions.jsonl --variants v.yaml --retrieval-only -k 3
+heka-rag eval gen -c hr.yaml -o questions.jsonl --count 30      # draft a starter question set
+heka-rag serve -c hr.yaml --auth jwt                             # REST server (heka-rag-sdk[server])
 ```
 
 ## The pipeline
@@ -217,12 +219,12 @@ may need `temperature: null`.
 
 ## REST server
 
-`pip install "kbsdk[server]"` adds an HTTP layer over your agents, for callers that are not Python:
+`pip install "heka-rag-sdk[server]"` adds an HTTP layer over your agents, for callers that are not Python:
 
 ```
-export KBSDK_JWT_SECRET=...            # HS* secret (or KBSDK_JWT_PUBLIC_KEY for RS*/ES*); >= 32 bytes
-export KBSDK_ADMIN_KEY=...             # optional: enables POST .../ingest
-kbsdk serve -c hr.yaml -c onboarding.yaml --auth jwt --jwt-audience kb --cors-origin https://intranet.example
+export HEKA_RAG_JWT_SECRET=...            # HS* secret (or HEKA_RAG_JWT_PUBLIC_KEY for RS*/ES*); >= 32 bytes
+export HEKA_RAG_ADMIN_KEY=...             # optional: enables POST .../ingest
+heka-rag serve -c hr.yaml -c onboarding.yaml --auth jwt --jwt-audience kb --cors-origin https://intranet.example
 ```
 ```
 POST /v1/agents/{id}/ask      {"question": "...", "history": [{"role": "user", "content": "..."}, ...]}
@@ -255,7 +257,7 @@ out, but that combination has not been tested.
 
 ## Measuring accuracy
 
-Put real questions in a JSONL file (`kbsdk.eval.EvalCase`): the question, the answer a human expects, where
+Put real questions in a JSONL file (`heka.rag.eval.EvalCase`): the question, the answer a human expects, where
 it lives (a document, optionally a `section` and an exact `quote`), whether the documents can answer it at
 all, a `dev`/`test` split, optional `tags`, `history` and `context` (who is asking). Tune on `dev`; treat
 `test` as the honest number.
@@ -272,7 +274,7 @@ fast proxy, not ground truth: read a sample of its reasons before trusting a num
 
 ### Reading a report honestly
 
-Every report (`kbsdk eval run`) also shows:
+Every report (`heka-rag eval run`) also shows:
 
 * **95% intervals.** With 50-100 questions a score of 0.90 is really "somewhere around 0.82-0.96", so a
   difference of a few points between two configs is usually noise. Yes/no metrics use a Wilson interval; graded
@@ -293,8 +295,8 @@ Answer quality is capped by extraction quality, and extraction fails silently: a
 letters come out spaced apart, a header repeated on every page fills the chunks. Before tuning anything:
 
 ```
-kbsdk ingest -c hr.yaml --report-only     # no embedding, no index changes, no API key
-kbsdk ingest -c hr.yaml --report          # index, then report
+heka-rag ingest -c hr.yaml --report-only     # no embedding, no index changes, no API key
+heka-rag ingest -c hr.yaml --report          # index, then report
 ```
 
 It loads and chunks every file exactly as ingestion does, and lists per file: characters, pages, tables,
@@ -310,10 +312,10 @@ have **not** been run on real messy PDFs yet.
 
 ### Drafting a starter question set
 
-No real questions yet? `kbsdk eval gen` drafts a set from your indexed documents (needs a model):
+No real questions yet? `heka-rag eval gen` drafts a set from your indexed documents (needs a model):
 
 ```
-kbsdk eval gen -c hr.yaml -o questions.jsonl --count 30 --followups 6 --unanswerable 6
+heka-rag eval gen -c hr.yaml -o questions.jsonl --count 30 --followups 6 --unanswerable 6
 ```
 
 A model writes each question, reference answer and supporting quote from one passage; the SDK then rejects
@@ -331,7 +333,7 @@ wrong label makes a correct answer count as a hallucination. The command therefo
 unanswerable question for you to review. Synthetic questions also echo the documents' wording more than real
 ones do, so scores on them run optimistic: use them to get going and replace them with real questions.
 
-`kbsdk eval ablate` scores the same questions under several configs (each with its own index) and prints
+`heka-rag eval ablate` scores the same questions under several configs (each with its own index) and prints
 deltas plus a breakdown by question `tag`; a variant that cannot run is reported as skipped.
 
 ### What was measured (and what it does not show)
@@ -410,12 +412,12 @@ Every LLM is wrapped with the response cache, a shared rate limiter, retries and
 
 ## Plug-ins
 
-Every stage is a small `Protocol` in `kbsdk.interfaces`. Register an adapter and use it by name in any
+Every stage is a small `Protocol` in `heka.rag.interfaces`. Register an adapter and use it by name in any
 config; runtime collaborators (an LLM, an embedder) are injected only if the constructor asks for them:
 
 ```python
-from kbsdk import register
-from kbsdk.adapters._deps import Settings
+from heka.rag import register
+from heka.rag.adapters._deps import Settings
 
 
 class MyGuardrailSettings(Settings):  # validated; unknown keys are errors
@@ -430,7 +432,7 @@ class BannedWords:
         self.banned = settings.banned
 
     async def check(self, text, *, stage, context=None):
-        from kbsdk.types import GuardrailResult
+        from heka.rag.types import GuardrailResult
 
         hit = next((w for w in self.banned if w in text.lower()), None)
         return (
@@ -440,7 +442,7 @@ class BannedWords:
         )
 ```
 
-Third-party packages can ship adapters through the `kbsdk.plugins` entry-point group.
+Third-party packages can ship adapters through the `heka.rag.plugins` entry-point group.
 
 ## Known limitations
 
@@ -475,6 +477,6 @@ python -m venv .venv
 python examples/benchmark/build_benchmark.py   # regenerate the benchmark (deterministic)
 ```
 
-Real company documents and question sets belong in `data/`, which is git-ignored, as are the `.kbsdk/`
+Real company documents and question sets belong in `data/`, which is git-ignored, as are the `.heka-rag/`
 index folders. Building, versioning and publishing to a private index are in `docs/RELEASING.md`; changes
 are recorded in `CHANGELOG.md`. The licence is proprietary (see `LICENSE`).

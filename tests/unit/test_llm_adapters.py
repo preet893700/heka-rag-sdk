@@ -3,12 +3,12 @@
 import pytest
 
 from conftest import ScriptedLLM
-from kbsdk import ConfigError, Message, RAGConfig, registry
-from kbsdk.adapters.caches import MemoryCache
-from kbsdk.adapters.llms import LangChainLLM, ResilientLLM, _content_to_text
-from kbsdk.factory import build_llm
-from kbsdk.interfaces import LLM
-from kbsdk.types import LLMResponse, Usage
+from heka.rag import ConfigError, Message, RAGConfig, registry
+from heka.rag.adapters.caches import MemoryCache
+from heka.rag.adapters.llms import LangChainLLM, ResilientLLM, _content_to_text
+from heka.rag.factory import build_llm
+from heka.rag.interfaces import LLM
+from heka.rag.types import LLMResponse, Usage
 
 pytest.importorskip("langchain_core")
 
@@ -104,7 +104,7 @@ async def test_resilient_llm_retries_and_caches(monkeypatch):
     async def instant(_):
         return None
 
-    monkeypatch.setattr("kbsdk.resilience.asyncio.sleep", instant)
+    monkeypatch.setattr("heka.rag.resilience.asyncio.sleep", instant)
     inner = Sequenced(rate_limit(), rate_limit())
     llm = ResilientLLM(inner, cache=MemoryCache(), max_retries=3)
     messages = [Message(role="user", content="q")]
@@ -121,7 +121,7 @@ async def test_resilient_llm_falls_back_after_exhausting_retries(monkeypatch):
     async def instant(_):
         return None
 
-    monkeypatch.setattr("kbsdk.resilience.asyncio.sleep", instant)
+    monkeypatch.setattr("heka.rag.resilience.asyncio.sleep", instant)
     primary = Sequenced(*[rate_limit() for _ in range(10)])
     backup = ScriptedLLM(lambda m, s: "from backup", name="backup")
     llm = ResilientLLM(primary, max_retries=1, fallbacks=[backup])
@@ -133,7 +133,7 @@ async def test_resilient_llm_raises_when_everything_fails(monkeypatch):
     async def instant(_):
         return None
 
-    monkeypatch.setattr("kbsdk.resilience.asyncio.sleep", instant)
+    monkeypatch.setattr("heka.rag.resilience.asyncio.sleep", instant)
     llm = ResilientLLM(Sequenced(*[rate_limit() for _ in range(5)]), max_retries=1)
     with pytest.raises(RuntimeError, match="quota"):
         await llm.generate([Message(role="user", content="q")])
@@ -184,7 +184,7 @@ def test_build_llm_applies_reliability_settings(monkeypatch):
 def test_gemini_afc_notice_is_hidden_but_other_warnings_from_that_logger_are_not(caplog):
     import logging
 
-    from kbsdk.adapters.llms import silence_gemini_afc_notice
+    from heka.rag.adapters.llms import silence_gemini_afc_notice
 
     silence_gemini_afc_notice()
     silence_gemini_afc_notice()  # idempotent: one filter, not two

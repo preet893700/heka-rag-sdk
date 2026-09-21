@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from kbsdk.adapters.chunkers import ChunkerSettings, FixedChunker, StructureAwareChunker
-from kbsdk.types import Document
+from heka.rag.adapters.chunkers import ChunkerSettings, FixedChunker, StructureAwareChunker
+from heka.rag.types import Document
 
 HANDBOOK = """# Leave Policy
 

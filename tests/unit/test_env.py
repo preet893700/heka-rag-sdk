@@ -3,9 +3,9 @@ import os
 
 import pytest
 
-from kbsdk import ConfigError, RAGConfig, load_env_file
-from kbsdk.cli import main
-from kbsdk.env import parse_env_text
+from heka.rag import ConfigError, RAGConfig, load_env_file
+from heka.rag.cli import main
+from heka.rag.env import parse_env_text
 
 
 def test_parsing_syntax_variants():
@@ -58,25 +58,25 @@ def test_malformed_lines_report_the_line_number_but_not_the_value(text, message)
 
 
 def test_load_sets_variables_and_reports_names_only(tmp_path, monkeypatch):
-    monkeypatch.delenv("KBSDK_T_KEY", raising=False)
+    monkeypatch.delenv("HEKA_RAG_T_KEY", raising=False)
     path = tmp_path / ".env"
-    path.write_text("KBSDK_T_KEY=super-secret-value\n", encoding="utf-8")
+    path.write_text("HEKA_RAG_T_KEY=super-secret-value\n", encoding="utf-8")
     result = load_env_file(path)
-    assert os.environ["KBSDK_T_KEY"] == "super-secret-value"
-    assert result.loaded == ["KBSDK_T_KEY"] and result.skipped_existing == []
-    assert "super-secret-value" not in result.summary() and "KBSDK_T_KEY" in result.summary()
-    monkeypatch.delenv("KBSDK_T_KEY")
+    assert os.environ["HEKA_RAG_T_KEY"] == "super-secret-value"
+    assert result.loaded == ["HEKA_RAG_T_KEY"] and result.skipped_existing == []
+    assert "super-secret-value" not in result.summary() and "HEKA_RAG_T_KEY" in result.summary()
+    monkeypatch.delenv("HEKA_RAG_T_KEY")
 
 
 def test_existing_environment_wins_unless_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("KBSDK_T_KEY", "from-shell")
+    monkeypatch.setenv("HEKA_RAG_T_KEY", "from-shell")
     path = tmp_path / ".env"
-    path.write_text("KBSDK_T_KEY=from-file\n", encoding="utf-8")
+    path.write_text("HEKA_RAG_T_KEY=from-file\n", encoding="utf-8")
     result = load_env_file(path)
-    assert os.environ["KBSDK_T_KEY"] == "from-shell"
-    assert result.skipped_existing == ["KBSDK_T_KEY"] and result.loaded == []
+    assert os.environ["HEKA_RAG_T_KEY"] == "from-shell"
+    assert result.skipped_existing == ["HEKA_RAG_T_KEY"] and result.loaded == []
     load_env_file(path, override=True)
-    assert os.environ["KBSDK_T_KEY"] == "from-file"
+    assert os.environ["HEKA_RAG_T_KEY"] == "from-file"
 
 
 def test_missing_file_is_an_error_unless_optional(tmp_path):
@@ -86,30 +86,30 @@ def test_missing_file_is_an_error_unless_optional(tmp_path):
 
 
 def test_bom_is_tolerated(tmp_path, monkeypatch):
-    monkeypatch.delenv("KBSDK_T_BOM", raising=False)
-    (tmp_path / ".env").write_bytes("﻿KBSDK_T_BOM=1\n".encode())
+    monkeypatch.delenv("HEKA_RAG_T_BOM", raising=False)
+    (tmp_path / ".env").write_bytes("﻿HEKA_RAG_T_BOM=1\n".encode())
     load_env_file(tmp_path / ".env")
-    assert os.environ["KBSDK_T_BOM"] == "1"
-    monkeypatch.delenv("KBSDK_T_BOM")
+    assert os.environ["HEKA_RAG_T_BOM"] == "1"
+    monkeypatch.delenv("HEKA_RAG_T_BOM")
 
 
 def test_nothing_is_read_implicitly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("KBSDK_T_IMPLICIT", raising=False)
-    (tmp_path / ".env").write_text("KBSDK_T_IMPLICIT=1\n", encoding="utf-8")
+    monkeypatch.delenv("HEKA_RAG_T_IMPLICIT", raising=False)
+    (tmp_path / ".env").write_text("HEKA_RAG_T_IMPLICIT=1\n", encoding="utf-8")
     RAGConfig.from_dict({"generation": {"llm": {"provider": "scripted"}}})
-    assert "KBSDK_T_IMPLICIT" not in os.environ  # a .env in the working directory is ignored
+    assert "HEKA_RAG_T_IMPLICIT" not in os.environ  # a .env in the working directory is ignored
 
 
 def test_config_env_file_is_relative_to_the_config_and_loaded_by_the_sdk(tmp_path, monkeypatch):
     from conftest import CORPUS
-    from kbsdk import KnowledgeBase
+    from heka.rag import KnowledgeBase
 
-    monkeypatch.delenv("KBSDK_T_CFG", raising=False)
+    monkeypatch.delenv("HEKA_RAG_T_CFG", raising=False)
     (tmp_path / "docs").mkdir()
     for name, text in CORPUS.items():
         (tmp_path / "docs" / name).write_text(text, encoding="utf-8")
-    (tmp_path / "secrets.env").write_text("KBSDK_T_CFG=loaded-by-config\n", encoding="utf-8")
+    (tmp_path / "secrets.env").write_text("HEKA_RAG_T_CFG=loaded-by-config\n", encoding="utf-8")
     (tmp_path / "agent.yaml").write_text(
         "name: Env Agent\nenv_file: ./secrets.env\nembedder: {provider: hashing}\n"
         "knowledge: {sources: [{location: ./docs}], persist_dir: ./idx}\n"
@@ -118,14 +118,14 @@ def test_config_env_file_is_relative_to_the_config_and_loaded_by_the_sdk(tmp_pat
     )
     config = RAGConfig.from_file(tmp_path / "agent.yaml")
     assert config.env_file == str(tmp_path / "secrets.env")
-    assert "KBSDK_T_CFG" not in os.environ  # loading the config alone reads nothing
+    assert "HEKA_RAG_T_CFG" not in os.environ  # loading the config alone reads nothing
     KnowledgeBase(config)
-    assert os.environ["KBSDK_T_CFG"] == "loaded-by-config"
-    monkeypatch.delenv("KBSDK_T_CFG")
+    assert os.environ["HEKA_RAG_T_CFG"] == "loaded-by-config"
+    monkeypatch.delenv("HEKA_RAG_T_CFG")
 
 
 def test_config_pointing_at_a_missing_env_file_fails_clearly(tmp_path):
-    from kbsdk import KnowledgeBase
+    from heka.rag import KnowledgeBase
 
     config = RAGConfig.from_dict(
         {"env_file": str(tmp_path / "gone.env"), "generation": {"llm": {"provider": "scripted"}}}
@@ -137,21 +137,23 @@ def test_config_pointing_at_a_missing_env_file_fails_clearly(tmp_path):
 def test_cli_env_file_flag_loads_the_file_and_names_only_are_reported(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.delenv("KBSDK_T_CLI", raising=False)
-    (tmp_path / ".env").write_text("KBSDK_T_CLI=cli-secret-value\n", encoding="utf-8")
+    monkeypatch.delenv("HEKA_RAG_T_CLI", raising=False)
+    (tmp_path / ".env").write_text("HEKA_RAG_T_CLI=cli-secret-value\n", encoding="utf-8")
     assert main(["presets", "--env-file", str(tmp_path / ".env")]) == 0
     captured = capsys.readouterr()
-    assert os.environ["KBSDK_T_CLI"] == "cli-secret-value"
-    assert "KBSDK_T_CLI" in captured.err and "cli-secret-value" not in captured.err + captured.out
-    monkeypatch.delenv("KBSDK_T_CLI")
+    assert os.environ["HEKA_RAG_T_CLI"] == "cli-secret-value"
+    assert (
+        "HEKA_RAG_T_CLI" in captured.err and "cli-secret-value" not in captured.err + captured.out
+    )
+    monkeypatch.delenv("HEKA_RAG_T_CLI")
 
 
 def test_cli_without_the_flag_reads_no_env_file(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("KBSDK_T_CLI2", raising=False)
-    (tmp_path / ".env").write_text("KBSDK_T_CLI2=1\n", encoding="utf-8")
+    monkeypatch.delenv("HEKA_RAG_T_CLI2", raising=False)
+    (tmp_path / ".env").write_text("HEKA_RAG_T_CLI2=1\n", encoding="utf-8")
     assert main(["presets"]) == 0
-    assert "KBSDK_T_CLI2" not in os.environ
+    assert "HEKA_RAG_T_CLI2" not in os.environ
 
 
 def test_cli_env_file_missing_is_friendly(tmp_path, capsys):

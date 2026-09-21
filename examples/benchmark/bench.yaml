@@ -11,7 +11,7 @@ retrieval:
 # A regression floor, set a little below what this configuration measured when the benchmark was
 # built (hit 0.97 / MRR 0.85 at k=5). It exists to catch accidental damage to the SDK, NOT as an
 # accuracy target: targets for your own documents should come from your own questions.
-#   kbsdk eval run -c bench.yaml -d questions.jsonl --retrieval-only     (exit code 1 on a miss)
+#   heka-rag eval run -c bench.yaml -d questions.jsonl --retrieval-only     (exit code 1 on a miss)
 evaluation:
   thresholds:
     retrieval_hit: 0.92

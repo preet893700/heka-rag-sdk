@@ -5,9 +5,9 @@ import pytest
 pytest.importorskip("langgraph")
 
 from conftest import ScriptedLLM, grounded_reply  # noqa: E402
-from kbsdk import Agent, BudgetExceededError, KnowledgeBase, RequestContext  # noqa: E402
-from kbsdk.adapters.agentic import AgenticRetriever  # noqa: E402
-from kbsdk.adapters.retrievers import SparseRetriever  # noqa: E402
+from heka.rag import Agent, BudgetExceededError, KnowledgeBase, RequestContext  # noqa: E402
+from heka.rag.adapters.agentic import AgenticRetriever  # noqa: E402
+from heka.rag.adapters.retrievers import SparseRetriever  # noqa: E402
 
 PEOPLE = "# People\n\n## Alice\n\nAlice Novak works at the Zurich site.\n"
 SITES = (
@@ -158,7 +158,7 @@ async def test_the_call_budget_also_guards_the_loop(make_config, tmp_path):
 async def test_the_langgraph_extra_gives_an_install_hint(monkeypatch, hop_kb):
     import importlib
 
-    from kbsdk import MissingExtraError
+    from heka.rag import MissingExtraError
 
     real = importlib.import_module
 
@@ -167,7 +167,7 @@ async def test_the_langgraph_extra_gives_an_install_hint(monkeypatch, hop_kb):
             raise ImportError("no langgraph", name="langgraph")
         return real(name, package)
 
-    monkeypatch.setattr("kbsdk.adapters._deps.importlib.import_module", blocked)
+    monkeypatch.setattr("heka.rag.adapters._deps.importlib.import_module", blocked)
     agentic = AgenticRetriever(SparseRetriever(hop_kb.store), verdicts())
-    with pytest.raises(MissingExtraError, match=r"kbsdk\[agentic\]"):
+    with pytest.raises(MissingExtraError, match=r"heka-rag-sdk\[agentic\]"):
         await agentic.retrieve(QUESTION, k=1)

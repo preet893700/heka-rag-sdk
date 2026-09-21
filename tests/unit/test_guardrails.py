@@ -3,8 +3,8 @@ import json
 import pytest
 
 from conftest import ScriptedLLM, grounded_reply
-from kbsdk import Agent, KnowledgeBase, RequestContext, registry
-from kbsdk.adapters.guardrails import (
+from heka.rag import Agent, KnowledgeBase, RequestContext, registry
+from heka.rag.adapters.guardrails import (
     InjectionGuardrail,
     InjectionSettings,
     PiiGuardrail,
@@ -14,8 +14,8 @@ from kbsdk.adapters.guardrails import (
     ScopeSettings,
     find_pii,
 )
-from kbsdk.pipelines.guardrails import GuardrailRunner
-from kbsdk.types import GuardrailResult
+from heka.rag.pipelines.guardrails import GuardrailRunner
+from heka.rag.types import GuardrailResult
 
 ALL = ["email", "phone", "card", "ssn", "ip"]
 

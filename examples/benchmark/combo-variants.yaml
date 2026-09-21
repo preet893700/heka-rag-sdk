@@ -1,5 +1,5 @@
 # Do the individually-best pieces work well together? Dense retrieval throughout.
-#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants combo-variants.yaml --retrieval-only -k 3
+#   heka-rag eval ablate -c bench.yaml -d questions.jsonl --variants combo-variants.yaml --retrieval-only -k 3
 baseline:
   retrieval: {mode: dense}
 parent-child:

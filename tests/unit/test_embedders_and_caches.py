@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from kbsdk.adapters.caches import DiskCache, DiskCacheSettings, MemoryCache
-from kbsdk.adapters.embedders import HashingEmbedder, HashingSettings, ResilientEmbedder
-from kbsdk.interfaces import Cache, Embedder
+from heka.rag.adapters.caches import DiskCache, DiskCacheSettings, MemoryCache
+from heka.rag.adapters.embedders import HashingEmbedder, HashingSettings, ResilientEmbedder
+from heka.rag.interfaces import Cache, Embedder
 
 
 class Flaky:
@@ -97,7 +97,7 @@ async def test_resilient_embedder_retries_rate_limits(monkeypatch):
     async def instant(_):
         return None
 
-    monkeypatch.setattr("kbsdk.resilience.asyncio.sleep", instant)
+    monkeypatch.setattr("heka.rag.resilience.asyncio.sleep", instant)
     inner = Flaky(failures=2)
     embedder = ResilientEmbedder(inner, max_retries=3)
     assert len(await embedder.embed_documents(["x"])) == 1

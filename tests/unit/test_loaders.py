@@ -1,7 +1,7 @@
 import pytest
 
-from kbsdk import ConfigError, MissingExtraError
-from kbsdk.adapters.loaders import (
+from heka.rag import ConfigError, MissingExtraError
+from heka.rag.adapters.loaders import (
     CsvLoader,
     DocxLoader,
     HtmlLoader,
@@ -258,7 +258,7 @@ async def test_ocr_never_replaces_real_text_with_less(tmp_path):
 def test_missing_ocr_extra_gives_an_install_hint(monkeypatch):
     import importlib
 
-    from kbsdk import registry
+    from heka.rag import registry
 
     real = importlib.import_module
 
@@ -267,8 +267,8 @@ def test_missing_ocr_extra_gives_an_install_hint(monkeypatch):
             raise ImportError("No module named 'rapidocr'", name="rapidocr")
         return real(name, package)
 
-    monkeypatch.setattr("kbsdk.adapters._deps.importlib.import_module", blocked)
-    with pytest.raises(MissingExtraError, match=r"kbsdk\[ocr\]"):
+    monkeypatch.setattr("heka.rag.adapters._deps.importlib.import_module", blocked)
+    with pytest.raises(MissingExtraError, match=r"heka-rag-sdk\[ocr\]"):
         registry.create("ocr", "rapidocr")
 
 
@@ -277,7 +277,7 @@ async def test_real_rapidocr_reads_rendered_text(tmp_path):
     image_module = pytest.importorskip("PIL.Image")
     draw_module = pytest.importorskip("PIL.ImageDraw")
     font_module = pytest.importorskip("PIL.ImageFont")
-    from kbsdk import registry
+    from heka.rag import registry
 
     image = image_module.new("RGB", (1000, 200), "white")
     draw = draw_module.Draw(image)
@@ -303,7 +303,7 @@ async def test_real_ocr_recovers_a_scanned_pdf(tmp_path):
     image_module = pytest.importorskip("PIL.Image")
     draw_module = pytest.importorskip("PIL.ImageDraw")
     font_module = pytest.importorskip("PIL.ImageFont")
-    from kbsdk import registry
+    from heka.rag import registry
 
     image = image_module.new("RGB", (1240, 400), "white")  # an image-only page: no text layer
     try:

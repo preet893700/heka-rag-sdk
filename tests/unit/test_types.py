@@ -1,5 +1,5 @@
-from kbsdk import Answer, Chunk, Citation, ScoredChunk, Usage
-from kbsdk.types import LLMResponse
+from heka.rag import Answer, Chunk, Citation, ScoredChunk, Usage
+from heka.rag.types import LLMResponse
 
 
 def test_usage_addition_sums_and_handles_missing_cost():

@@ -11,7 +11,7 @@ build/
 # Local secrets and per-machine state
 .env
 .env.*
-.kbsdk/
+.heka-rag/
 
 # Real company documents and question sets stay local, never committed
 data/

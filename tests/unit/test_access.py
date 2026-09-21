@@ -1,10 +1,10 @@
 import pytest
 
 from conftest import ScriptedLLM, grounded_reply
-from kbsdk import AccessDeniedError, Agent, KnowledgeBase, RequestContext
-from kbsdk.access import AccessPolicy
-from kbsdk.config import AccessConfig
-from kbsdk.filters import matches
+from heka.rag import AccessDeniedError, Agent, KnowledgeBase, RequestContext
+from heka.rag.access import AccessPolicy
+from heka.rag.config import AccessConfig
+from heka.rag.filters import matches
 
 CFG = AccessConfig(tenant_field="tenant_id", roles_field="allowed_roles")
 
@@ -178,7 +178,7 @@ async def test_ingestion_warns_about_untagged_content(make_config):
 
 
 async def test_eval_cases_carry_their_own_identity(secured):
-    from kbsdk.eval import EvalCase, EvalDataset, SourceRef, run_retrieval_eval
+    from heka.rag.eval import EvalCase, EvalDataset, SourceRef, run_retrieval_eval
 
     kb = KnowledgeBase(secured)
     await kb.aingest()

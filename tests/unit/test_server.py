@@ -20,12 +20,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from conftest import CORPUS, ScriptedLLM, answering_reply  # noqa: E402
-from kbsdk import Agent, ConfigError, KnowledgeBase  # noqa: E402
-from kbsdk.cli import main  # noqa: E402
-from kbsdk.errors import AccessDeniedError, BudgetExceededError, KbsdkError  # noqa: E402
-from kbsdk.server import ApiKeyAuth, CustomAuth, JwtAuth, NoAuth, create_app  # noqa: E402
-from kbsdk.server.auth import AuthError  # noqa: E402
-from kbsdk.types import RequestContext  # noqa: E402
+from heka.rag import Agent, ConfigError, KnowledgeBase  # noqa: E402
+from heka.rag.cli import main  # noqa: E402
+from heka.rag.errors import AccessDeniedError, BudgetExceededError, HekaRagError  # noqa: E402
+from heka.rag.server import ApiKeyAuth, CustomAuth, JwtAuth, NoAuth, create_app  # noqa: E402
+from heka.rag.server.auth import AuthError  # noqa: E402
+from heka.rag.types import RequestContext  # noqa: E402
 
 API_KEY = "test-api-key-0123456789abcdef"
 ADMIN_KEY = "test-admin-key-0123456789abcd"
@@ -384,13 +384,13 @@ class Exploding(ScriptedLLM):
     ("error", "status", "code"),
     [
         (RuntimeError("db password is hunter2"), 500, "internal_error"),
-        (KbsdkError("internal path C:/secret/index"), 500, "internal_error"),
+        (HekaRagError("internal path C:/secret/index"), 500, "internal_error"),
         (AccessDeniedError("policy detail: tenant_id required"), 403, "access_denied"),
         (BudgetExceededError("spent $4.99 of $5"), 429, "budget_exceeded"),
     ],
 )
 def test_failures_map_to_generic_errors_and_leak_nothing(make_config, caplog, error, status, code):
-    caplog.set_level(logging.INFO, logger="kbsdk.server")
+    caplog.set_level(logging.INFO, logger="heka.rag.server")
     with client_for(agent_for(make_config(), Exploding(error))) as client:
         response = client.post("/v1/agents/test-agent/ask", json=LEAVE_Q, headers=bearer(API_KEY))
     assert response.status_code == status and response.json()["error"]["code"] == code
@@ -578,8 +578,8 @@ def test_several_agents_are_hosted_side_by_side(make_config):
 
 def test_a_missing_web_stack_gives_an_install_hint(monkeypatch):
     monkeypatch.setitem(sys.modules, "fastapi", None)
-    monkeypatch.delitem(sys.modules, "kbsdk.server.app", raising=False)
-    with pytest.raises(KbsdkError, match=r"pip install 'kbsdk\[server\]'"):
+    monkeypatch.delitem(sys.modules, "heka.rag.server.app", raising=False)
+    with pytest.raises(HekaRagError, match=r"pip install 'heka-rag-sdk\[server\]'"):
         create_app([], auth=NoAuth())
 
 
@@ -607,7 +607,7 @@ def project(tmp_path):
 def served(monkeypatch):
     """Capture the app the CLI would run instead of starting uvicorn."""
     captured = {}
-    monkeypatch.setattr("kbsdk.server.serve", lambda app, **kw: captured.update(app=app, **kw))
+    monkeypatch.setattr("heka.rag.server.serve", lambda app, **kw: captured.update(app=app, **kw))
     return captured
 
 
@@ -619,8 +619,8 @@ def run(capsys, *argv):
 
 def test_cli_serve_with_api_keys(project, served, monkeypatch, capsys):
     _, config = project
-    monkeypatch.setenv("KBSDK_API_KEYS", f"{API_KEY}, second-key-0123456789abcdef")
-    monkeypatch.setenv("KBSDK_ADMIN_KEY", ADMIN_KEY)
+    monkeypatch.setenv("HEKA_RAG_API_KEYS", f"{API_KEY}, second-key-0123456789abcdef")
+    monkeypatch.setenv("HEKA_RAG_ADMIN_KEY", ADMIN_KEY)
     code, _, err = run(capsys, "serve", "-c", config, "--auth", "apikey", "--port", "9123")
     assert code == 0 and served["port"] == 9123 and served["host"] == "127.0.0.1"
     assert "auth: apikey" in err and "admin endpoints: on" in err
@@ -642,17 +642,17 @@ def test_cli_serve_with_api_keys(project, served, monkeypatch, capsys):
 
 def test_cli_serve_needs_secrets_from_the_environment(project, served, monkeypatch, capsys):
     _, config = project
-    monkeypatch.delenv("KBSDK_API_KEYS", raising=False)
+    monkeypatch.delenv("HEKA_RAG_API_KEYS", raising=False)
     code, _, err = run(capsys, "serve", "-c", config, "--auth", "apikey")
-    assert code == 2 and "KBSDK_API_KEYS" in err and not served
-    monkeypatch.delenv("KBSDK_JWT_SECRET", raising=False)
+    assert code == 2 and "HEKA_RAG_API_KEYS" in err and not served
+    monkeypatch.delenv("HEKA_RAG_JWT_SECRET", raising=False)
     code, _, err = run(capsys, "serve", "-c", config, "--auth", "jwt")
-    assert code == 2 and "KBSDK_JWT_SECRET" in err
+    assert code == 2 and "HEKA_RAG_JWT_SECRET" in err
 
 
 def test_cli_serve_with_jwt_maps_claims_and_checks_audience(project, served, monkeypatch, capsys):
     _, config = project
-    monkeypatch.setenv("KBSDK_JWT_SECRET", JWT_SECRET)
+    monkeypatch.setenv("HEKA_RAG_JWT_SECRET", JWT_SECRET)
     code, _, _ = run(capsys, "serve", "-c", config, "--auth", "jwt", "--jwt-audience", "kb")
     assert code == 0
     url = "/v1/agents/served-agent/ask"
@@ -669,12 +669,12 @@ def test_cli_refuses_unsafe_combinations(project, served, monkeypatch, capsys):
     _, config = project
     code, _, err = run(capsys, "serve", "-c", config, "--auth", "none", "--host", "0.0.0.0")
     assert code == 2 and "local development only" in err
-    monkeypatch.setenv("KBSDK_API_KEYS", API_KEY)
+    monkeypatch.setenv("HEKA_RAG_API_KEYS", API_KEY)
     code, _, err = run(
         capsys, "serve", "-c", config, "--auth", "apikey", "--host", "0.0.0.0", "--debug-responses"
     )
     assert code == 2 and "localhost" in err
-    monkeypatch.setenv("KBSDK_JWT_SECRET", JWT_SECRET)
+    monkeypatch.setenv("HEKA_RAG_JWT_SECRET", JWT_SECRET)
     code, _, err = run(capsys, "serve", "-c", config, "--auth", "jwt", "--trust-caller-context")
     assert code == 2 and "apikey" in err
     assert not served

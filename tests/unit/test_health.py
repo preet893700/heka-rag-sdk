@@ -1,8 +1,8 @@
 import pytest
 
-from kbsdk import KnowledgeBase
-from kbsdk.cli import main
-from kbsdk.pipelines.health import (
+from heka.rag import KnowledgeBase
+from heka.rag.cli import main
+from heka.rag.pipelines.health import (
     FileHealth,
     HealthReport,
     count_headings,

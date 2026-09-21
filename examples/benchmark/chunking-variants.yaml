@@ -1,6 +1,6 @@
 # Which chunking strategy hands the model the passage that actually contains the answer?
 # Dense retrieval only, so that the chunker is the only thing that differs. Needs no API key.
-#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants chunking-variants.yaml --retrieval-only -k 3
+#   heka-rag eval ablate -c bench.yaml -d questions.jsonl --variants chunking-variants.yaml --retrieval-only -k 3
 structure-1200:
   chunker: {provider: structure_aware, params: {chunk_size: 1200, chunk_overlap: 150}}
 structure-600:

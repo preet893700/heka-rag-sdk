@@ -4,40 +4,41 @@ The package is meant for a **private index** (Artifactory, Azure Artifacts, GitL
 AWS CodeArtifact, ...). The metadata carries the `Private :: Do Not Upload` classifier, so `twine upload` to
 the public PyPI is refused; a private index ignores it.
 
-## 1. Pick the real name (once)
+## 1. Names
 
-`kbsdk` is a placeholder. Before the first release:
+| What | Name |
+| ---- | ---- |
+| Distribution (what you `pip install`) | `heka-rag-sdk` |
+| Import | `heka.rag`  (`from heka.rag import Agent`) |
+| Command line | `heka-rag` |
+| Environment variables | `HEKA_RAG_*` (e.g. `HEKA_RAG_JWT_SECRET`) |
+| Error base class | `HekaRagError` |
+| Local state folder | `.heka-rag/` |
+| Plug-in entry-point group | `heka.rag.plugins` |
 
-```
-python scripts/rename_package.py acmerag            # dry run: lists every edit
-python scripts/rename_package.py acmerag --apply    # needs a clean git tree, so `git checkout .` undoes it
-pip install -e .
-python -m pytest && ruff check . && mypy
-```
+`heka` is a **PEP 420 namespace package** shared by every Heka distribution (`heka.rag` now, `heka.agents` or
+`heka.eval` later). The one rule: no distribution may ship a `heka/__init__.py`, or the namespace breaks for the
+others. This repository keeps its code in `src/heka/rag/` and has no `src/heka/__init__.py`; the build checks in
+section 2 verify that.
 
-It renames the import package, the command, extras hints, the `<name>.plugins` entry-point group, the
-environment-variable prefix (`KBSDK_JWT_SECRET` -> `ACMERAG_JWT_SECRET`), class names (`KbsdkError` ->
-`AcmeragError`) and the default `.kbsdk/` state folder, then re-sorts imports with ruff. The changelog is left
-as history and gets a note. Afterwards delete `scripts/rename_package.py` and `tests/unit/test_rename_script.py`.
-
-Choose the name against your index, not just the file system: if a package with that name exists on the public
+Choose names against your index, not just the file system: if a package named `heka-rag-sdk` exists on the public
 PyPI, an installer that falls back to it (`--extra-index-url`) could be tricked into installing the public one
-(dependency confusion). Prefer a name that is unclaimed on PyPI, or register a placeholder there, and tell
-consumers to use `--index-url` pointing only at your private index.
+(dependency confusion). Register the name on the public PyPI as a placeholder, or tell consumers to use
+`--index-url` pointing only at your private index.
 
-Also put your company's legal name in `LICENSE` (it currently says "the authors").
+Put your company's legal name in `LICENSE` (it currently says "the authors").
 
 ## 2. Cut a release
 
 1. Move the `[Unreleased]` entries of `CHANGELOG.md` under a new version heading and set `version` in
-   `pyproject.toml` (the only place: `<name>.__version__` reads it from the installed metadata).
+   `pyproject.toml` (the only place: `heka.rag.__version__` reads it from the installed metadata).
 2. Run the checks: `python -m pytest`, `ruff check .`, `ruff format --check .`, `mypy`.
 3. Commit, then tag: `git tag -a v0.1.0 -m "0.1.0"`.
 4. Build from a clean checkout of the tag:
 
    ```
    pip install build twine
-   python -m build          # writes dist/<name>-<version>-py3-none-any.whl and .tar.gz
+   python -m build          # writes dist/heka_rag_sdk-<version>-py3-none-any.whl and .tar.gz
    twine check dist/*
    ```
 
@@ -45,8 +46,15 @@ Also put your company's legal name in `LICENSE` (it currently says "the authors"
 
    ```
    python -m venv /tmp/smoke && /tmp/smoke/bin/pip install dist/*.whl
-   /tmp/smoke/bin/<name> presets
-   /tmp/smoke/bin/python -c "import <name>; print(<name>.__version__)"
+   /tmp/smoke/bin/heka-rag presets
+   /tmp/smoke/bin/python -c "import heka.rag as r; print(r.__version__, getattr(__import__('heka'), '__file__', None))"
+   ```
+
+   The last value must print `None`: `heka` is a namespace, so it has no `__file__`. Also confirm the wheel has no
+   `heka/__init__.py`:
+
+   ```
+   python -c "import zipfile,glob; print('heka/__init__.py' in zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist())"   # False
    ```
 
 6. Upload to the private index. With `twine` (credentials in `~/.pypirc` or `TWINE_USERNAME` /
@@ -62,7 +70,7 @@ Also put your company's legal name in `LICENSE` (it currently says "the authors"
 ## 3. Installing it
 
 ```
-pip install --index-url https://<your-index>/simple/ "<name>[pdf,local,gemini]"
+pip install --index-url https://<your-index>/simple/ "heka-rag-sdk[pdf,local,gemini]"
 ```
 
 Extras are chosen per use: `pdf`, `ocr`, `office`, `web`, `local`, `gemini`, `groq`, `anthropic`, `openai`,
@@ -72,7 +80,7 @@ Extras are chosen per use: `pdf`, `ocr`, `office`, `web`, `local`, `gemini`, `gr
 ## What the build contains
 
 * The wheel holds the package, its presets and `py.typed`; the sdist adds tests, examples, the README, licence
-  and changelog. `.env` files, `.kbsdk/` index folders and `data/` are excluded from both.
+  and changelog. `.env` files, `.heka-rag/` index folders and `data/` are excluded from both.
 * Versioning: `0.x` may change the public API in any minor release; from `1.0` the usual semantic versioning
-  applies. Anything in `<name>.interfaces`, `RAGConfig`, `Agent`, `KnowledgeBase`, `Answer` and the eval
+  applies. Anything in `heka.rag.interfaces`, `RAGConfig`, `Agent`, `KnowledgeBase`, `Answer` and the eval
   dataset format is treated as public.

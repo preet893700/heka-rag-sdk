@@ -29,10 +29,10 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from kbsdk import Agent, KnowledgeBase, RAGConfig, factory
-from kbsdk.eval import EvalCase, LLMJudge, load_dataset, run_retrieval_eval
-from kbsdk.eval.analysis import wilson_interval
-from kbsdk.types import Answer, Message
+from heka.rag import Agent, KnowledgeBase, RAGConfig, factory
+from heka.rag.eval import EvalCase, LLMJudge, load_dataset, run_retrieval_eval
+from heka.rag.eval.analysis import wilson_interval
+from heka.rag.types import Answer, Message
 
 ANSWER_LLM = {
     "provider": "groq",

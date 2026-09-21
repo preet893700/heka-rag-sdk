@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from kbsdk import KnowledgeBase, RAGConfig, RequestContext, registry
+from heka.rag import KnowledgeBase, RAGConfig, RequestContext, registry
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 CONFIGS = sorted(p for p in EXAMPLES.glob("*/*.yaml") if "variants" not in p.name)

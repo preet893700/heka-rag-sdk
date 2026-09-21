@@ -3,8 +3,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from kbsdk import ConfigError
-from kbsdk.eval import EvalCase, EvalDataset, load_dataset
+from heka.rag import ConfigError
+from heka.rag.eval import EvalCase, EvalDataset, load_dataset
 
 CASES = [
     {

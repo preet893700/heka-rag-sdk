@@ -1,8 +1,8 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from kbsdk import MissingExtraError, UnknownProviderError
-from kbsdk.registry import Registry
+from heka.rag import MissingExtraError, UnknownProviderError
+from heka.rag.registry import Registry
 
 
 class Settings(BaseModel):
@@ -64,7 +64,7 @@ def test_lazy_registration_defers_import():
 def test_missing_optional_dependency_gives_install_hint():
     reg = make()
     reg.register_lazy("loader", "pdf", "definitely_not_installed_pkg:Loader", extra="pdf")
-    with pytest.raises(MissingExtraError, match=r"pip install 'kbsdk\[pdf\]'"):
+    with pytest.raises(MissingExtraError, match=r"pip install 'heka-rag-sdk\[pdf\]'"):
         reg.resolve("loader", "pdf")
 
 

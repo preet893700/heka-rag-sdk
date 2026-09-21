@@ -1,15 +1,15 @@
 import pytest
 from pydantic import ValidationError
 
-from kbsdk import KnowledgeBase, registry
-from kbsdk.adapters.chunkers_advanced import (
+from heka.rag import KnowledgeBase, registry
+from heka.rag.adapters.chunkers_advanced import (
     ParentChildChunker,
     ParentChildSettings,
     SemanticChunker,
     SemanticSettings,
 )
-from kbsdk.adapters.embedders import HashingEmbedder
-from kbsdk.types import Document
+from heka.rag.adapters.embedders import HashingEmbedder
+from heka.rag.types import Document
 
 LONG_SECTION = (
     "# Handbook\n\n## Travel\n\n"

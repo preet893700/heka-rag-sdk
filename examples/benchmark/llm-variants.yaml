@@ -1,6 +1,6 @@
 # Query rewriting and follow-up handling need a language model, so this comparison needs an API key
 # (GOOGLE_API_KEY for the free-tier-dev preset). Each variant adds one model call per question.
-#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants llm-variants.yaml --retrieval-only \
+#   heka-rag eval ablate -c bench.yaml -d questions.jsonl --variants llm-variants.yaml --retrieval-only \
 #       --env-file ../../.env
 base:
   retrieval: {mode: hybrid, reranker: {provider: local_cross_encoder}}

@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import CORPUS
-from kbsdk.cli import main
+from heka.rag.cli import main
 
 
 @pytest.fixture

@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-import kbsdk  # noqa: F401  (registers built-in adapters)
-from kbsdk import KnowledgeBase, RAGConfig
-from kbsdk.registry import registry
-from kbsdk.types import LLMResponse, Message, Usage
+import heka.rag  # noqa: F401  (registers built-in adapters)
+from heka.rag import KnowledgeBase, RAGConfig
+from heka.rag.registry import registry
+from heka.rag.types import LLMResponse, Message, Usage
 
 Responder = Callable[[Sequence[Message], str | None], str]
 

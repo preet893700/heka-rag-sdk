@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from kbsdk.adapters.stores import IndexMismatchError, LocalStoreSettings, LocalVectorStore
-from kbsdk.interfaces import VectorStore
-from kbsdk.types import Chunk
+from heka.rag.adapters.stores import IndexMismatchError, LocalStoreSettings, LocalVectorStore
+from heka.rag.interfaces import VectorStore
+from heka.rag.types import Chunk
 
 
 def chunk(cid, **metadata):
@@ -22,7 +22,7 @@ def store(request):
     if request.param == "local":
         return LocalVectorStore()
     pytest.importorskip("qdrant_client")
-    from kbsdk.adapters.qdrant_store import QdrantSettings, QdrantStore
+    from heka.rag.adapters.qdrant_store import QdrantSettings, QdrantStore
 
     return QdrantStore(QdrantSettings(location=":memory:", collection="contract"))
 

@@ -44,7 +44,7 @@ generation:
 
 tracing:
   - provider: jsonl                    # question/answer text is NOT written unless include_text: true
-    params: {path: ./.kbsdk/trace.jsonl}
+    params: {path: ./.heka-rag/trace.jsonl}
 
 # Prices are yours to supply (dollars per million tokens); with them, answers report their cost and
 # the budget below can stop spending.

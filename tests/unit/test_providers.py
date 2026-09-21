@@ -3,10 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
-from kbsdk import ConfigError, RAGConfig, registry
-from kbsdk.config import available_presets
-from kbsdk.factory import build_llm, generation_defaults
-from kbsdk.interfaces import LLM, Embedder
+from heka.rag import ConfigError, RAGConfig, registry
+from heka.rag.config import available_presets
+from heka.rag.factory import build_llm, generation_defaults
+from heka.rag.interfaces import LLM, Embedder
 
 pytest.importorskip("langchain_core")
 

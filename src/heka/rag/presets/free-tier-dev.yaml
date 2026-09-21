@@ -1,0 +1,35 @@
+# Development on free API tiers: Gemini for generation and judging, everything else local.
+# Model names change often - check the provider's docs and override `model` if one is retired.
+# Set GOOGLE_API_KEY in your environment (keys never go in config files).
+config_version: 1
+embedder:
+  provider: local
+  params:
+    model: BAAI/bge-small-en-v1.5
+store:
+  provider: local
+retrieval:
+  # Dense is the default because the measurements did not justify more (see README, "What was
+  # measured"): hybrid and the small reranker did not improve hit rate on the benchmark. Try them on
+  # your own questions with `heka-rag eval ablate`.
+  mode: dense
+  top_k: 20
+  final_k: 5
+generation:
+  llm:
+    provider: gemini
+    params:
+      model: gemini-2.5-flash
+      api_key_env: GOOGLE_API_KEY
+reliability:
+  max_retries: 5
+  requests_per_minute: 8   # conservative for free-tier quotas; raise if yours is higher
+cache:
+  provider: disk           # repeated dev / eval runs reuse earlier LLM and embedding calls
+evaluation:
+  judge_llm:
+    provider: gemini
+    params:
+      model: gemini-2.5-flash
+      api_key_env: GOOGLE_API_KEY
+  sample_size: 30

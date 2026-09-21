@@ -1,7 +1,7 @@
 """Qdrant-specific behaviour, and the differential test that keeps its filters identical to ours.
 
 Access control is built on the SDK's filter dialect, so a store that interprets a filter differently
-from the reference implementation (`kbsdk.filters.matches`) is a data-leak risk. This test runs every
+from the reference implementation (`heka.rag.filters.matches`) is a data-leak risk. This test runs every
 filter through both and demands the same answer.
 """
 
@@ -11,18 +11,18 @@ import pytest
 
 pytest.importorskip("qdrant_client")
 
-from kbsdk import ConfigError, KnowledgeBase, RequestContext  # noqa: E402
-from kbsdk.access import AccessPolicy  # noqa: E402
-from kbsdk.adapters.qdrant_store import (  # noqa: E402
+from heka.rag import ConfigError, KnowledgeBase, RequestContext  # noqa: E402
+from heka.rag.access import AccessPolicy  # noqa: E402
+from heka.rag.adapters.qdrant_store import (  # noqa: E402
     QdrantSettings,
     QdrantStore,
     point_id,
     to_qdrant_filter,
 )
-from kbsdk.adapters.stores import IndexMismatchError  # noqa: E402
-from kbsdk.config import AccessConfig  # noqa: E402
-from kbsdk.filters import matches  # noqa: E402
-from kbsdk.types import Chunk  # noqa: E402
+from heka.rag.adapters.stores import IndexMismatchError  # noqa: E402
+from heka.rag.config import AccessConfig  # noqa: E402
+from heka.rag.filters import matches  # noqa: E402
+from heka.rag.types import Chunk  # noqa: E402
 
 METADATA = {
     "a": {"tenant_id": "acme", "allowed_roles": ["hr"], "year": 2024, "grade": "L3", "dept": "hr"},
@@ -60,7 +60,7 @@ FILTERS = [
 
 
 async def build_pair():
-    from kbsdk.adapters.stores import LocalVectorStore
+    from heka.rag.adapters.stores import LocalVectorStore
 
     local = LocalVectorStore()
     qdrant = QdrantStore(QdrantSettings(location=":memory:", collection="diff"))

@@ -1,5 +1,5 @@
 # Which retrieval strategy finds the right passage? Needs no LLM and no API key.
-#   kbsdk eval ablate -c bench.yaml -d questions.jsonl --variants retrieval-variants.yaml --retrieval-only
+#   heka-rag eval ablate -c bench.yaml -d questions.jsonl --variants retrieval-variants.yaml --retrieval-only
 dense:
   retrieval: {mode: dense}
 sparse-bm25:

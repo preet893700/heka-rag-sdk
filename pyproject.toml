@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kbsdk"  # placeholder name - rename before the first release
+name = "heka-rag-sdk"
 version = "0.1.0"
 description = "A configurable, plug-and-play RAG SDK with citations and built-in evaluation."
 readme = "README.md"
@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.scripts]
-kbsdk = "kbsdk.cli:main"
+heka-rag = "heka.rag.cli:main"
 
 [project.optional-dependencies]
 pdf = ["pypdf>=4.0", "pdfplumber>=0.11"]
@@ -50,10 +50,10 @@ agentic = ["langgraph>=1.0"]
 otel = ["opentelemetry-api>=1.20"]
 server = ["fastapi>=0.115", "uvicorn>=0.30", "pyjwt[crypto]>=2.8"]
 all = [
-  "kbsdk[pdf,ocr,office,web,local,gemini,groq,anthropic,openai,ollama,qdrant,agentic,otel,server]",
+  "heka-rag-sdk[pdf,ocr,office,web,local,gemini,groq,anthropic,openai,ollama,qdrant,agentic,otel,server]",
 ]
 dev = [
-  "kbsdk[all]",
+  "heka-rag-sdk[all]",
   "opentelemetry-sdk>=1.20",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
@@ -63,7 +63,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kbsdk"]
+packages = ["src/heka"]
 
 # The source distribution ships what is needed to run the tests, and nothing local (no .env, indexes or data).
 [tool.hatch.build.targets.sdist]
@@ -71,7 +71,7 @@ include = [
   "/src", "/tests", "/examples", "/docs", "/scripts",
   "/README.md", "/LICENSE", "/CHANGELOG.md", "/pyproject.toml", "/.env.example",
 ]
-exclude = ["**/.kbsdk", "**/__pycache__", "**/*.pyc", "**/.env", "/data"]
+exclude = ["**/.heka-rag", "**/__pycache__", "**/*.pyc", "**/.env", "/data"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -91,5 +91,8 @@ extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.mypy]
 strict = true
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
 files = ["src"]
 plugins = ["pydantic.mypy"]

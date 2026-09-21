@@ -1,7 +1,7 @@
 import pytest
 
-from kbsdk import Answer
-from kbsdk.eval.analysis import (
+from heka.rag import Answer
+from heka.rag.eval.analysis import (
     ANSWERED_UNANSWERABLE,
     CITATION_PROBLEM,
     ERROR,
@@ -16,7 +16,7 @@ from kbsdk.eval.analysis import (
     outcome_of,
     wilson_interval,
 )
-from kbsdk.eval.report import CaseResult, EvalReport, aggregate
+from heka.rag.eval.report import CaseResult, EvalReport, aggregate
 
 
 def case(case_id="c", answerable=True, tags=(), error=None, **metrics):
@@ -174,7 +174,9 @@ def test_the_text_report_shows_intervals_outcomes_and_question_types():
     text = make_report(sample_results()).to_text()
     assert "95% intervals" in text and "retrieval_hit" in text and "n=4" in text
     assert "outcomes" in text and "retrieval_miss" in text and "wrong_with_right_context" in text
-    assert "look at:" in text and "kbsdk ingest --report" in text  # the hint for retrieval misses
+    assert (
+        "look at:" in text and "heka-rag ingest --report" in text
+    )  # the hint for retrieval misses
     assert "by question type" in text and "lookup" in text and "followup" in text
     assert "ok" in text.split("outcomes", 1)[1]
 

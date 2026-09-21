@@ -1,7 +1,7 @@
 import pytest
 
-from kbsdk import ConfigError, KnowledgeBase
-from kbsdk.pipelines.ingest import discover
+from heka.rag import ConfigError, KnowledgeBase
+from heka.rag.pipelines.ingest import discover
 
 
 async def test_first_ingest_indexes_everything(make_config):
@@ -135,7 +135,7 @@ async def test_scanned_pdf_warns_about_ocr(make_config, docs_dir):
 async def test_ocr_pipeline_end_to_end_reads_scans_and_images(make_config, docs_dir):
     pytest.importorskip("pdfplumber")
     pil = pytest.importorskip("PIL.Image")
-    from kbsdk import registry
+    from heka.rag import registry
     from pdf_helpers import make_pdf
 
     class Ocr:
@@ -161,7 +161,7 @@ async def test_ocr_pipeline_end_to_end_reads_scans_and_images(make_config, docs_
 
 
 def test_discover_glob_and_single_file(docs_dir):
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     files, _ = discover([SourceConfig(location=str(docs_dir / "*.md"))])
     assert sorted(f.rel for f in files) == ["expenses.md", "leave.md"]
@@ -170,7 +170,7 @@ def test_discover_glob_and_single_file(docs_dir):
 
 
 def test_discover_same_name_in_two_sources_stays_distinct(tmp_path):
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     for folder in ("a", "b"):
         (tmp_path / folder).mkdir()
@@ -183,7 +183,7 @@ def test_discover_same_name_in_two_sources_stays_distinct(tmp_path):
 
 def test_a_file_reached_through_two_sources_with_different_tags_is_an_error(docs_dir):
     """Otherwise a restricted document could be indexed a second time under public tags."""
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     broad = SourceConfig(location=str(docs_dir), metadata={"allowed_roles": ["*"]})
     narrow = SourceConfig(location=str(docs_dir / "leave.md"), metadata={"allowed_roles": ["hr"]})
@@ -194,7 +194,7 @@ def test_a_file_reached_through_two_sources_with_different_tags_is_an_error(docs
 
 
 def test_identical_overlapping_sources_are_merged_not_duplicated(docs_dir):
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     same = {"allowed_roles": ["*"]}
     files, _ = discover(
@@ -207,7 +207,7 @@ def test_identical_overlapping_sources_are_merged_not_duplicated(docs_dir):
 
 
 def test_exclude_carves_a_file_out_of_a_broader_source(docs_dir):
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     (docs_dir / "drafts").mkdir()
     (docs_dir / "drafts" / "wip.md").write_text("# WIP", encoding="utf-8")
@@ -221,7 +221,7 @@ def test_exclude_carves_a_file_out_of_a_broader_source(docs_dir):
 
 
 async def test_no_document_can_be_indexed_under_two_tag_sets(make_config, docs_dir):
-    from kbsdk import RequestContext
+    from heka.rag import RequestContext
 
     knowledge = make_config().to_dict()["knowledge"]
     knowledge["sources"] = [
@@ -240,7 +240,7 @@ async def test_no_document_can_be_indexed_under_two_tag_sets(make_config, docs_d
 
 
 def test_discover_rejects_missing_paths_and_urls():
-    from kbsdk.config import SourceConfig
+    from heka.rag.config import SourceConfig
 
     with pytest.raises(ConfigError, match="not found"):
         discover([SourceConfig(location="/definitely/not/here")])

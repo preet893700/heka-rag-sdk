@@ -1,16 +1,16 @@
 import json
 
 from conftest import ScriptedLLM
-from kbsdk import Agent, KnowledgeBase, Message, RAGConfig, Usage
-from kbsdk.adapters.retrievers import (
+from heka.rag import Agent, KnowledgeBase, Message, RAGConfig, Usage
+from heka.rag.adapters.retrievers import (
     DenseRetriever,
     HybridRetriever,
     SparseRetriever,
     fuse_rrf,
     fuse_weighted,
 )
-from kbsdk.adapters.sparse import Bm25Index, tokenize
-from kbsdk.adapters.transforms import (
+from heka.rag.adapters.sparse import Bm25Index, tokenize
+from heka.rag.adapters.transforms import (
     Condenser,
     HydeSettings,
     HydeTransform,
@@ -19,10 +19,10 @@ from kbsdk.adapters.transforms import (
     RewriteSettings,
     RewriteTransform,
 )
-from kbsdk.factory import LazyLLM, build_retrieval
-from kbsdk.pipelines.retrieve import RetrievalPipeline, expand_parents
-from kbsdk.types import Chunk, ScoredChunk
-from kbsdk.usage import MeteredLLM, record_usage, track_usage
+from heka.rag.factory import LazyLLM, build_retrieval
+from heka.rag.pipelines.retrieve import RetrievalPipeline, expand_parents
+from heka.rag.types import Chunk, ScoredChunk
+from heka.rag.usage import MeteredLLM, record_usage, track_usage
 
 
 def chunk(cid, text, **metadata):
@@ -397,7 +397,7 @@ async def test_retrieval_without_llm_features_never_builds_the_llm(kb):
 
 
 def test_registry_passes_only_the_dependencies_an_adapter_declares():
-    from kbsdk import registry
+    from heka.rag import registry
 
     marker = object()
     transform = registry.create(

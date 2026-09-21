@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from kbsdk import KbsdkError
-from kbsdk.cli import _load_variants, main
-from kbsdk.eval import EvalCase, EvalDataset, SourceRef, run_ablation
-from kbsdk.eval.ablation import variant_config
+from heka.rag import HekaRagError
+from heka.rag.cli import _load_variants, main
+from heka.rag.eval import EvalCase, EvalDataset, SourceRef, run_ablation
+from heka.rag.eval.ablation import variant_config
 
 
 def dataset():
@@ -77,8 +77,8 @@ async def test_run_ablation_compares_variants_on_the_same_questions(make_config)
 
 
 def test_deltas_are_relative_to_the_first_variant():
-    from kbsdk.eval import EvalReport, VariantResult
-    from kbsdk.eval.ablation import AblationReport
+    from heka.rag.eval import EvalReport, VariantResult
+    from heka.rag.eval.ablation import AblationReport
 
     def variant(name, hit):
         report = EvalReport(
@@ -129,9 +129,9 @@ def test_variants_file_parsing(tmp_path):
     assert _load_variants(str(path)) == {"x": {}}
     for bad in ("[1, 2]", "a: 5", "{}"):
         path.write_text(bad, encoding="utf-8")
-        with pytest.raises(KbsdkError):
+        with pytest.raises(HekaRagError):
             _load_variants(str(path))
-    with pytest.raises(KbsdkError, match="Cannot read"):
+    with pytest.raises(HekaRagError, match="Cannot read"):
         _load_variants(str(tmp_path / "missing.yaml"))
 
 

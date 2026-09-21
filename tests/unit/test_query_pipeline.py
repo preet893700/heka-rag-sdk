@@ -5,7 +5,7 @@ import json
 import pytest
 
 from conftest import ScriptedLLM, grounded_reply, question_and_sources
-from kbsdk import Agent, ConfigError, KnowledgeBase, Message
+from heka.rag import Agent, ConfigError, KnowledgeBase, Message
 
 
 def reply(**fields):

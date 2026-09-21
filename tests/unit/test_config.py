@@ -3,8 +3,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from kbsdk import ConfigError, RAGConfig, available_presets
-from kbsdk.config import ComponentConfig, deep_merge
+from heka.rag import ConfigError, RAGConfig, available_presets
+from heka.rag.config import ComponentConfig, deep_merge
 
 LLM = {"provider": "gemini", "params": {"model": "m", "api_key_env": "GOOGLE_API_KEY"}}
 

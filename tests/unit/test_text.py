@@ -1,6 +1,6 @@
 import pytest
 
-from kbsdk.text import extract_json, quote_in_text, slugify, stable_hash
+from heka.rag.text import extract_json, quote_in_text, slugify, stable_hash
 
 SOURCE = (
     "## Casual leave\n\nFull-time employees receive **12 days** of casual leave per calendar year. "
