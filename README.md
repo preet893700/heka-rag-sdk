@@ -30,10 +30,27 @@ runner.
 
 ## Install
 
+This repository is **private**, and the package is not on a package index yet, so install it from the
+repository. You need access to it (ask a Hekaos maintainer to add your GitHub account). Use the tag of the
+release you want:
+
+```bash
+# 1. From the repository, using the GitHub login Git already has (Git Credential Manager, or `gh auth login`).
+#    No token goes in the command.
+pip install "heka-rag-sdk[pdf,local,gemini] @ git+https://github.com/preet893700/heka-rag-sdk.git@v0.1.0"
+
+# 2. From a wheel: sign in to GitHub, download heka_rag_sdk-0.1.0-py3-none-any.whl from the release page,
+#    then install the local file.
+pip install "./heka_rag_sdk-0.1.0-py3-none-any.whl[pdf,local,gemini]"
+
+# 3. Over SSH, if your SSH key is on your GitHub account (standard syntax; not tested here).
+pip install "heka-rag-sdk[pdf,local,gemini] @ git+ssh://git@github.com/preet893700/heka-rag-sdk.git@v0.1.0"
 ```
-pip install "heka-rag-sdk[all]"                # everything below
-pip install "heka-rag-sdk[pdf,local,gemini]"   # or only what you need
-```
+
+Methods 1 and 2 were tested in clean environments. Never put an access token in a `pip install` URL: it is
+saved in shell history and logs. Use `[all]` in place of the extras list for everything below. Once the package
+is published to a private package index (see `docs/RELEASING.md`), the install becomes simply
+`pip install "heka-rag-sdk[pdf,local,gemini]"`.
 
 | Extra       | Adds                                                                  |
 | ----------- | --------------------------------------------------------------------- |

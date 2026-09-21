@@ -70,9 +70,29 @@ suffix (Inc., Ltd., ...), change it in `LICENSE` and in `authors`/`maintainers` 
 
 ## 3. Installing it
 
+**From a private package index** (after step 6 above; the recommended way for a team):
+
 ```
 pip install --index-url https://<your-index>/simple/ "heka-rag-sdk[pdf,local,gemini]"
 ```
+
+**Before an index exists, from the private GitHub repository** (`github.com/preet893700/heka-rag-sdk`; the
+reader needs access to it):
+
+```
+# using the GitHub login Git already has (Git Credential Manager or `gh auth login`); tested
+pip install "heka-rag-sdk[pdf,local,gemini] @ git+https://github.com/preet893700/heka-rag-sdk.git@v0.1.0"
+
+# from a wheel downloaded (signed in) from the release page; tested
+pip install "./heka_rag_sdk-0.1.0-py3-none-any.whl[pdf,local,gemini]"
+
+# over SSH, if the reader's key is on their GitHub account; standard syntax, not tested
+pip install "heka-rag-sdk[pdf,local,gemini] @ git+ssh://git@github.com/preet893700/heka-rag-sdk.git@v0.1.0"
+```
+
+Release assets of a private repository cannot be downloaded by URL without authentication, so a plain
+`pip install https://github.com/.../releases/download/...` fails for readers; download the file first. Do not put
+an access token in a `pip install` URL (it is saved in shell history and logs).
 
 Extras are chosen per use: `pdf`, `ocr`, `office`, `web`, `local`, `gemini`, `groq`, `anthropic`, `openai`,
 `ollama`, `qdrant`, `agentic`, `otel`, `server`, or `all`. A feature whose extra is missing fails with the exact
