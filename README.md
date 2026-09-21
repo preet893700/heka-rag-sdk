@@ -6,7 +6,7 @@ are checked against the source text, the agent declines when the documents don't
 may see which document is enforced inside retrieval, and accuracy is measured with a built-in evaluation
 runner.
 
-> **Status: 0.1.0, ready for a first private release.** Install `heka-rag-sdk`, import `heka.rag`, run `heka-rag`
+> **Status: 0.1.0, a pre-release.** Install `heka-rag-sdk`, import `heka.rag`, run `heka-rag`
 > (naming and the `heka` namespace: see `docs/RELEASING.md`).
 > Works today: ingestion (PDF with tables + OCR, Office, HTML, text), four chunkers, dense / sparse /
 > hybrid / agentic retrieval, rerankers, query rewriting and follow-up condensation, grounded answers
@@ -30,27 +30,22 @@ runner.
 
 ## Install
 
-This repository is **private**, and the package is not on a package index yet, so install it from the
-repository. You need access to it (ask a Hekaos maintainer to add your GitHub account). Use the tag of the
-release you want:
+The package is not on a package index yet, so install it from this repository's release. Both commands
+below were tested in clean environments with no GitHub login:
 
 ```bash
-# 1. From the repository, using the GitHub login Git already has (Git Credential Manager, or `gh auth login`).
-#    No token goes in the command.
+# From the git tag:
 pip install "heka-rag-sdk[pdf,local,gemini] @ git+https://github.com/preet893700/heka-rag-sdk.git@v0.1.0"
 
-# 2. From a wheel: sign in to GitHub, download heka_rag_sdk-0.1.0-py3-none-any.whl from the release page,
-#    then install the local file.
-pip install "./heka_rag_sdk-0.1.0-py3-none-any.whl[pdf,local,gemini]"
-
-# 3. Over SSH, if your SSH key is on your GitHub account (standard syntax; not tested here).
-pip install "heka-rag-sdk[pdf,local,gemini] @ git+ssh://git@github.com/preet893700/heka-rag-sdk.git@v0.1.0"
+# Or from the wheel attached to the release (check it against the SHA-256 in the release notes):
+pip install "heka-rag-sdk[pdf,local,gemini] @ https://github.com/preet893700/heka-rag-sdk/releases/download/v0.1.0/heka_rag_sdk-0.1.0-py3-none-any.whl"
 ```
 
-Methods 1 and 2 were tested in clean environments. Never put an access token in a `pip install` URL: it is
-saved in shell history and logs. Use `[all]` in place of the extras list for everything below. Once the package
-is published to a private package index (see `docs/RELEASING.md`), the install becomes simply
-`pip install "heka-rag-sdk[pdf,local,gemini]"`.
+Use `[all]` in place of the extras list for everything below. Once the package is published to a private
+package index (see `docs/RELEASING.md`), the install becomes simply `pip install "heka-rag-sdk[pdf,local,gemini]"`.
+
+The source is publicly readable, but the licence is proprietary: reading it grants no right to use, copy,
+modify or distribute it (see `LICENSE`).
 
 | Extra       | Adds                                                                  |
 | ----------- | --------------------------------------------------------------------- |

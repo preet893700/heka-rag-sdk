@@ -76,23 +76,22 @@ suffix (Inc., Ltd., ...), change it in `LICENSE` and in `authors`/`maintainers` 
 pip install --index-url https://<your-index>/simple/ "heka-rag-sdk[pdf,local,gemini]"
 ```
 
-**Before an index exists, from the private GitHub repository** (`github.com/preet893700/heka-rag-sdk`; the
-reader needs access to it):
+**Before an index exists, from the public GitHub repository** (`github.com/preet893700/heka-rag-sdk`). Both
+commands were tested in clean environments with no GitHub login:
 
 ```
-# using the GitHub login Git already has (Git Credential Manager or `gh auth login`); tested
+# from the git tag
 pip install "heka-rag-sdk[pdf,local,gemini] @ git+https://github.com/preet893700/heka-rag-sdk.git@v0.1.0"
 
-# from a wheel downloaded (signed in) from the release page; tested
-pip install "./heka_rag_sdk-0.1.0-py3-none-any.whl[pdf,local,gemini]"
-
-# over SSH, if the reader's key is on their GitHub account; standard syntax, not tested
-pip install "heka-rag-sdk[pdf,local,gemini] @ git+ssh://git@github.com/preet893700/heka-rag-sdk.git@v0.1.0"
+# from the wheel attached to the release (compare with the SHA-256 in the release notes)
+pip install "heka-rag-sdk[pdf,local,gemini] @ https://github.com/preet893700/heka-rag-sdk/releases/download/v0.1.0/heka_rag_sdk-0.1.0-py3-none-any.whl"
 ```
 
-Release assets of a private repository cannot be downloaded by URL without authentication, so a plain
-`pip install https://github.com/.../releases/download/...` fails for readers; download the file first. Do not put
-an access token in a `pip install` URL (it is saved in shell history and logs).
+The repository is public but the licence is proprietary (see `LICENSE`): visibility grants no right to use or
+redistribute. If the repository is ever made private again, both commands stop working for people without
+access: they would need a git login (or SSH key) for the first, and to download the wheel first, signed in, for
+the second; a plain `pip install <release URL>` fails on private assets. Never put an access token in a
+`pip install` URL (it is saved in shell history and logs).
 
 Extras are chosen per use: `pdf`, `ocr`, `office`, `web`, `local`, `gemini`, `groq`, `anthropic`, `openai`,
 `ollama`, `qdrant`, `agentic`, `otel`, `server`, or `all`. A feature whose extra is missing fails with the exact
