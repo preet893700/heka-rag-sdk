@@ -6,7 +6,8 @@ are checked against the source text, the agent declines when the documents don't
 may see which document is enforced inside retrieval, and accuracy is measured with a built-in evaluation
 runner.
 
-> **Status: Phase 3 (production controls).** `kbsdk` is a placeholder name.
+> **Status: 0.1.0, ready for a first private release.** `kbsdk` is a placeholder name (one command renames it:
+> see `docs/RELEASING.md`).
 > Works today: ingestion (PDF with tables + OCR, Office, HTML, text), four chunkers, dense / sparse /
 > hybrid / agentic retrieval, rerankers, query rewriting and follow-up condensation, grounded answers
 > with verified citations and abstention, **access control and multi-tenancy, guardrails (PII, prompt
@@ -16,13 +17,14 @@ runner.
 > **Not built:** pgvector and other database stores except Qdrant, provider-native citations, more
 > connectors. See *Roadmap*.
 >
-> **Verified vs. not.** Everything is covered by 479 offline tests. **Run live, on Groq
+> **Verified vs. not.** Everything is covered by 577 offline tests. **Run live, on Groq
 > (`openai/gpt-oss-120b`, free tier), once:** grounded generation with verified citations, abstention, the
-> LLM judge, follow-up condensation, rewrite, multi-query, HyDE, answer verification and the agentic loop
-> (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below). **Never run against a
-> live service:** Gemini, Claude, OpenAI and Ollama calls, the LLM reranker, guardrails together with a live
-> model, a remote Qdrant server (embedded mode is tested), and a real OpenTelemetry backend. One model
-> and one small synthetic set prove the plumbing, not general accuracy: measure on your own questions.
+> LLM judge, follow-up condensation, rewrite, multi-query, HyDE, answer verification, the agentic loop
+> (an HR eval of 26 questions and a 71-question retrieval benchmark, numbers below), `kbsdk eval gen`, and
+> the REST server (a real uvicorn process with JWT auth, access control and guardrails, called over HTTP).
+> **Never run against a live service:** Gemini, Claude, OpenAI and Ollama calls, the LLM reranker, a remote
+> Qdrant server (embedded mode is tested), and a real OpenTelemetry backend. One model and one small
+> synthetic set prove the plumbing, not general accuracy: measure on your own questions.
 
 ## Install
 
@@ -431,4 +433,5 @@ python examples/benchmark/build_benchmark.py   # regenerate the benchmark (deter
 ```
 
 Real company documents and question sets belong in `data/`, which is git-ignored, as are the `.kbsdk/`
-index folders.
+index folders. Building, versioning and publishing to a private index are in `docs/RELEASING.md`; changes
+are recorded in `CHANGELOG.md`. The licence is proprietary (see `LICENSE`).

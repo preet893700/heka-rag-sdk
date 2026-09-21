@@ -1,5 +1,8 @@
 """kbsdk - a configurable, plug-and-play RAG SDK (placeholder name)."""
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
 from kbsdk import adapters as _adapters  # noqa: F401  (registers the built-in adapters)
 from kbsdk.agent import Agent
 from kbsdk.config import ComponentConfig, RAGConfig, available_presets
@@ -27,7 +30,10 @@ from kbsdk.types import (
     Usage,
 )
 
-__version__ = "0.0.1"
+try:  # one source of truth: the version in pyproject.toml, as installed
+    __version__ = _pkg_version("kbsdk")
+except PackageNotFoundError:  # running from a source tree that was never installed
+    __version__ = "0+unknown"
 
 __all__ = [
     "AccessDeniedError",

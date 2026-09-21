@@ -4,13 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kbsdk"  # placeholder name - rename before the first release
-version = "0.0.1"
+version = "0.1.0"
 description = "A configurable, plug-and-play RAG SDK with citations and built-in evaluation."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = { file = "LICENSE" }
+keywords = ["rag", "retrieval", "llm", "citations", "evaluation", "knowledge-base"]
 classifiers = [
+  # Stops an accidental `twine upload` to the public PyPI; a private index ignores it.
+  "Private :: Do Not Upload",
+  "License :: Other/Proprietary License",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Typing :: Typed",
 ]
 # Keep the core install light: heavy or provider-specific dependencies live in extras.
@@ -54,6 +64,14 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kbsdk"]
+
+# The source distribution ships what is needed to run the tests, and nothing local (no .env, indexes or data).
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src", "/tests", "/examples", "/docs", "/scripts",
+  "/README.md", "/LICENSE", "/CHANGELOG.md", "/pyproject.toml", "/.env.example",
+]
+exclude = ["**/.kbsdk", "**/__pycache__", "**/*.pyc", "**/.env", "/data"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
