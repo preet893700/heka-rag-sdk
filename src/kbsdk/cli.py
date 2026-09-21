@@ -1,8 +1,9 @@
-"""Command line: kbsdk ingest | ask | inspect | eval run | eval check | presets."""
+"""Command line: kbsdk ingest | ask | inspect | eval run | eval check | eval gen | eval ablate | presets."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from datetime import datetime
@@ -22,8 +23,11 @@ from kbsdk.eval.dataset import load_dataset
 from kbsdk.eval.judge import LLMJudge
 from kbsdk.eval.report import EvalReport
 from kbsdk.eval.runner import EvalRunner, run_retrieval_eval
+from kbsdk.eval.synth import SynthOptions, generate_dataset
 from kbsdk.knowledge_base import KnowledgeBase
 from kbsdk.text import slugify
+from kbsdk.types import RequestContext
+from kbsdk.usage import MeteredLLM, track_usage
 
 
 def _err(message: str) -> None:
@@ -149,6 +153,90 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
     return 1 if report.counts.get("errors") else 0
 
 
+def _cmd_eval_gen(args: argparse.Namespace) -> int:
+    config = RAGConfig.from_file(args.config)
+    kb = KnowledgeBase(config)
+    out = Path(args.out)
+    if out.exists() and not args.force:
+        raise KbsdkError(f"{out} already exists; pass --force to overwrite it.")
+    context = None
+    if args.context:
+        try:
+            context = RequestContext.model_validate(json.loads(args.context))
+        except (ValueError, TypeError) as exc:
+            raise KbsdkError(
+                f'--context must be a JSON object like {{"roles": ["hr"]}}: {exc}'
+            ) from exc
+    if kb.access.enabled and context is None:
+        raise KbsdkError(
+            "Access control is on, so generated questions need an identity: pass --context "
+            '\'{"tenant_id": ..., "roles": [...]}\'. Only passages that identity may see are used.'
+        )
+    if not args.no_ingest:
+        _sync_index(kb)
+
+    component = (
+        config.evaluation.generator_llm or config.evaluation.judge_llm or config.generation.llm
+    )
+    llm = MeteredLLM(
+        factory.build_llm(config, component, kb.cache, defaults={"temperature": 0.0}),
+        pricing=config.pricing,
+    )
+    options = SynthOptions(
+        answerable=args.count,
+        followups=args.followups,
+        unanswerable=args.unanswerable,
+        test_fraction=args.test_fraction,
+        seed=args.seed,
+        concurrency=args.concurrency,
+        min_chunk_chars=args.min_chars,
+        context=context,
+    )
+    with track_usage() as meter:
+        result = run_sync(generate_dataset(kb, llm, options, name=out.stem))
+    if not result.dataset.cases:
+        raise KbsdkError("No questions passed the checks. " + " ".join(result.warnings))
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    lines = (
+        json.dumps(case.model_dump(mode="json", exclude_none=True), ensure_ascii=False)
+        for case in result.dataset.cases
+    )
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    kept = ", ".join(f"{n} {kind}" for kind, n in result.kept.items())
+    print(f"wrote {len(result.dataset.cases)} questions to {out} ({kept})")
+    if result.dropped:
+        print("dropped by the checks:")
+        for reason, n in sorted(result.dropped.items()):
+            print(f"  {n:>3}  {reason}")
+    unanswerable = [c for c in result.dataset.cases if not c.answerable]
+    if unanswerable:
+        print(
+            "review these: they are labelled unanswerable by a model check, and a wrong label "
+            "punishes a correct answer. Delete any the documents actually cover:"
+        )
+        for case in unanswerable:
+            print(f"  {case.id}: {case.question}")
+    usage = meter.total
+    cost = f" | cost: ${usage.cost_usd:.4f}" if usage.cost_usd is not None else ""
+    print(
+        f"model: {llm.name} | llm calls: {usage.llm_calls} | cache hits: {usage.cache_hits}{cost}"
+    )
+    for warning in [*result.warnings, *result.dataset.warnings()]:
+        print(f"warning: {warning}")
+    if component == config.generation.llm:
+        print(
+            "warning: the model that wrote these questions is the model being tested, which flatters "
+            "it; set evaluation.generator_llm to a different model if you can."
+        )
+    print(
+        "note: synthetic questions echo the documents' wording more than real ones do, so scores on "
+        "them run optimistic. Read a sample, fix or delete weak ones, and add real questions."
+    )
+    return 0
+
+
 def _load_variants(path: str) -> dict[str, dict[str, Any]]:
     try:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -250,6 +338,32 @@ def build_parser() -> argparse.ArgumentParser:
     check = eval_commands.add_parser("check", help="validate a dataset and list its weaknesses")
     check.add_argument("dataset")
     check.set_defaults(func=_cmd_eval_check)
+
+    gen = eval_commands.add_parser(
+        "gen",
+        help="draft a starter question set from the indexed documents (needs an LLM)",
+        parents=[env],
+    )
+    add_config(gen)
+    gen.add_argument("-o", "--out", required=True, help="where to write the .jsonl dataset")
+    gen.add_argument("--count", type=int, default=30, help="answerable questions (default 30)")
+    gen.add_argument("--followups", type=int, default=6, help="follow-up questions (default 6)")
+    gen.add_argument(
+        "--unanswerable",
+        type=int,
+        default=6,
+        help="questions the documents cannot answer (default 6)",
+    )
+    gen.add_argument("--test-fraction", type=float, default=0.3, help="share held out as 'test'")
+    gen.add_argument("--seed", type=int, default=0, help="changes which passages are sampled")
+    gen.add_argument("--concurrency", type=int, default=3, help="model calls in flight")
+    gen.add_argument(
+        "--min-chars", type=int, default=200, help="skip passages shorter than this (default 200)"
+    )
+    gen.add_argument("--context", help="JSON RequestContext (needed when access control is on)")
+    gen.add_argument("--force", action="store_true", help="overwrite an existing output file")
+    gen.add_argument("--no-ingest", action="store_true", help="skip the automatic index update")
+    gen.set_defaults(func=_cmd_eval_gen)
 
     run = eval_commands.add_parser(
         "run", help="run the agent over a dataset and score it", parents=[env]

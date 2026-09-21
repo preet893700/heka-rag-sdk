@@ -221,6 +221,29 @@ all, a `dev`/`test` split, optional `tags`, `history` and `context` (who is aski
 
 With a `quote` in a gold reference, a "hit" means the returned chunk *contains* that text. An LLM judge is a
 fast proxy, not ground truth: read a sample of its reasons before trusting a number.
+### Drafting a starter question set
+
+No real questions yet? `kbsdk eval gen` drafts a set from your indexed documents (needs a model):
+
+```
+kbsdk eval gen -c hr.yaml -o questions.jsonl --count 30 --followups 6 --unanswerable 6
+```
+
+A model writes each question, reference answer and supporting quote from one passage; the SDK then rejects
+drafts whose quote is not verbatim in the passage, whose numbers are not in the passage, that copy six or
+more consecutive words of it, that point at "the passage", or that duplicate another question. Follow-ups
+come with the earlier turns as `history`. Unanswerable questions are proposed from a document outline and
+checked against what retrieval returns. Output is deterministic per `--seed`, split into `dev`/`test`,
+and every case is tagged `synthetic`. With access control on, pass `--context` and only passages that
+identity may see are used. Set `evaluation.generator_llm` to a model *other than* the one being tested.
+
+Read the result before trusting it. On the HR example (live, `qwen/qwen3.8-27b` writing) the answerable and
+follow-up questions were sound, but the model-based "unanswerable" check is imperfect: it labelled "what is
+the deadline to submit expense reports?" unanswerable although the policy states a 30-day deadline, and a
+wrong label makes a correct answer count as a hallucination. The command therefore prints every
+unanswerable question for you to review. Synthetic questions also echo the documents' wording more than real
+ones do, so scores on them run optimistic: use them to get going and replace them with real questions.
+
 `kbsdk eval ablate` scores the same questions under several configs (each with its own index) and prints
 deltas plus a breakdown by question `tag`; a variant that cannot run is reported as skipped.
 

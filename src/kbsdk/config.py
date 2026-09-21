@@ -190,6 +190,9 @@ class ReliabilityConfig(_Model):
 
 class EvalConfig(_Model):
     judge_llm: ComponentConfig | None = None  # defaults to the generation model when unset
+    # Writes synthetic test questions (`kbsdk eval gen`). Prefer a model other than the one being
+    # tested; defaults to judge_llm, then the generation model.
+    generator_llm: ComponentConfig | None = None
     metrics: list[ComponentConfig] = Field(default_factory=list)  # empty = the built-in set
     thresholds: dict[str, float] = Field(default_factory=dict)  # metric name -> minimum, for gating
     sample_size: int | None = Field(default=None, ge=1)  # judge only a sample (saves cost / quota)
