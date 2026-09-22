@@ -19,9 +19,12 @@
 * **`docs/images/heka-rag-sdk-wordmark.png`** and **`docs/images/hekaos-icon.png`** (72×74) — the two source
   images the lockup above is composited from (wordmark crop + Hekaos icon, background keyed to transparent
   where needed). Not referenced directly in the README any more, kept as the editable components.
-* **`docs/images/hekaos-icon-small.png`** (20×20) — a smaller export of the same icon. Not currently used
-  (an icon-plus-text footer credit line had the same stacking problem as above, so the footer stayed plain
-  text) — kept in case a small icon is wanted somewhere later.
+* **`docs/images/hekaos-footer-credit.png`** — the small "Built by Hekaos." credit at the very end of the
+  README. Same reasoning as the lockup: an icon image followed by plain text on the same line hit the same
+  block-stacking problem, so this is one composited image (icon + rendered text, Segoe UI Semibold, coloured
+  to match the wordmark's tagline) rather than an image plus a separate text node.
+* **`docs/images/hekaos-icon-small.png`** (20×20) — a smaller export of the icon; the source the footer
+  credit's icon half is composited from.
 * **`docs/images/flow.png`** and **`docs/images/pipeline.png`** — the two diagrams under "## See it work"
   and "### The pipeline, one level deeper". Supplied directly, in the same custom illustrated style as
   `architecture.png` (built from the prompts below). Both used to be live ` ```mermaid ` code fences —
@@ -48,6 +51,13 @@ If the icon or wordmark changes, rebuild `docs/images/heka-rag-sdk-lockup.png` f
 wordmark's near-white background to transparent (`min(r,g,b) >= 250` → alpha 0, with a short ramp down to
 `230` for anti-aliased edges), then paste both onto one transparent canvas, icon on the left, an ~18px gap,
 wordmark on the right, both vertically centered.
+
+### Rebuilding the footer credit image
+
+Same idea, smaller: paste `docs/images/hekaos-icon-small.png` onto a transparent canvas, then use
+`PIL.ImageDraw` with `C:\Windows\Fonts\seguisb.ttf` at 20pt, colour `(100, 111, 145)` (sampled from the
+wordmark's tagline), to draw "Built by Hekaos." beside it with an 8px gap, both vertically centered. Update
+the text or swap the font there if the credit line's wording changes.
 
 A now-unused fallback still sits in `docs/images/src/*.mmd` (the plain-Mermaid version of the flow/pipeline
 diagrams) in case a quick, ungenerated regeneration of either is ever needed — `npx --yes

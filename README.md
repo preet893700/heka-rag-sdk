@@ -207,4 +207,4 @@ index folders. Building, versioning and publishing to a private index are in
 
 ---
 
-Built by Hekaos.
+![Built by Hekaos.](docs/images/hekaos-footer-credit.png)
