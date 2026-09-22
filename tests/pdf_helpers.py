@@ -19,18 +19,19 @@ def _assemble(objects: list[bytes]) -> bytes:
 
 
 def make_pdf_from_streams(streams: list[bytes]) -> bytes:
-    """A PDF with one page per raw content stream (Helvetica available as /F1)."""
+    """A PDF with one page per raw content stream (Helvetica available as /F1, bold as /F2)."""
     n = len(streams)
-    kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(n))
+    kids = " ".join(f"{5 + 2 * i} 0 R" for i in range(n))
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         f"<< /Type /Pages /Kids [{kids}] /Count {n} >>".encode(),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
     ]
     for i, content in enumerate(streams):
         objects.append(
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {5 + 2 * i} 0 R "
-            f"/Resources << /Font << /F1 3 0 R >> >> >>".encode()
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {6 + 2 * i} 0 R "
+            f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>".encode()
         )
         objects.append(b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream")
     return _assemble(objects)
@@ -43,6 +44,82 @@ def make_pdf(pages: list[str]) -> bytes:
         lines = "".join(f"({line}) Tj T* " for line in text.split("\n")) if text else ""
         streams.append(f"BT /F1 12 Tf 14 TL 72 720 Td {lines}ET".encode() if text else b"")
     return make_pdf_from_streams(streams)
+
+
+def heading_body_stream(
+    heading: str, body_lines: list[str], *, bold: bool = False, size: int = 18
+) -> bytes:
+    """A page with one heading line (optionally bold, at `size`) followed by normal 11pt body text -
+    for testing font-size/weight heading detection, where the wording itself is not heading-like."""
+    font = "F2" if bold else "F1"
+    ops = [f"BT /{font} {size} Tf 72 720 Td ({heading}) Tj ET"]
+    y = 690
+    for line in body_lines:
+        ops.append(f"BT /F1 11 Tf 72 {y} Td ({line}) Tj ET")
+        y -= 18
+    return "\n".join(ops).encode()
+
+
+def two_column_stream(title: str, left: list[str], right: list[str]) -> bytes:
+    """A page with a full-width title over two side-by-side columns of text. Keep each column's
+    lines short (well under ~30 characters at 11pt) so a clear gap survives between them at these
+    x-positions on a standard 612pt-wide page."""
+    ops = [f"BT /F2 16 Tf 72 750 Td ({title}) Tj ET"]
+    y = 700
+    for line in left:
+        ops.append(f"BT /F1 11 Tf 72 {y} Td ({line}) Tj ET")
+        y -= 18
+    y = 700
+    for line in right:
+        ops.append(f"BT /F1 11 Tf 380 {y} Td ({line}) Tj ET")
+        y -= 18
+    return "\n".join(ops).encode()
+
+
+def borderless_table_stream(rows: list[list[str]]) -> bytes:
+    """A whitespace-aligned table with no ruled lines, so the default ruled-line detector misses it."""
+    x_positions = [72, 220, 380]
+    ops = []
+    y = 720
+    for row in rows:
+        for cell, x in zip(row, x_positions, strict=False):
+            ops.append(f"BT /F1 11 Tf {x} {y} Td ({cell}) Tj ET")
+        y -= 20
+    return "\n".join(ops).encode()
+
+
+def make_encrypted_pdf(pages: list[str], password: str) -> bytes:
+    """`make_pdf`, then encrypted with a user password (needs pypdf, imported lazily)."""
+    import io
+
+    import pypdf
+
+    reader = pypdf.PdfReader(io.BytesIO(make_pdf(pages)))
+    writer = pypdf.PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.encrypt(user_password=password)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def make_pdf_with_form_field(page_text: str, field_name: str, field_value: str) -> bytes:
+    """A one-page PDF with an AcroForm text field filled in (built by hand: pypdf's writer has no
+    high-level "add a form field" helper, so this constructs the /AcroForm dict directly)."""
+    content = f"BT /F1 12 Tf 72 720 Td ({page_text}) Tj ET".encode()
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm 6 0 R >>",
+        b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R "
+        b"/Resources << /Font << /F1 3 0 R >> >> /Annots [7 0 R] >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        b"<< /Fields [7 0 R] >>",
+        f"<< /Type /Annot /Subtype /Widget /FT /Tx /T ({field_name}) /V ({field_value}) "
+        f"/Rect [100 700 300 720] /P 4 0 R >>".encode(),
+    ]
+    return _assemble(objects)
 
 
 def table_page_stream(heading: str, rows: list[list[str]], footer: str) -> bytes:

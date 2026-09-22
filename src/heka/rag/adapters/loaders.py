@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import os
 import re
+import statistics
+from collections import Counter, defaultdict
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -134,35 +137,347 @@ def _promote_page(text: str) -> str:
     return "\n".join(out)
 
 
+_DIGIT_RUN = re.compile(r"\d+")
+_DIGIT_HEAVY_SHARE = 0.2  # share of a line's letters+digits that must be digits to normalise them
+
+
+def _boilerplate_key(line: str) -> str:
+    """Loose fingerprint of a line, so "Page 1 of 59" and "Page 2 of 59" count as the same running
+    footer even though the page number changes. Digits are only collapsed for lines that are mostly
+    digits/punctuation to begin with (page numbers, dates, "3 of 59"); an ordinary sentence that
+    happens to contain one number ("Section 1 covers...") is matched on its exact text only, so it
+    is never confused with a different sentence on a different page."""
+    text = " ".join(line.split())
+    if len(text) < 4 or len(text) > 120:
+        return ""
+    alnum = [c for c in text if c.isalnum()]
+    if alnum and sum(c.isdigit() for c in alnum) / len(alnum) >= _DIGIT_HEAVY_SHARE:
+        return _DIGIT_RUN.sub("#", text)
+    return text
+
+
+def strip_repeated_lines(pages: list[str]) -> list[str]:
+    """Drop lines that repeat, near-identically, across most pages: running headers and footers
+    ("Acme Corp - Confidential", "Page 3 of 59"). Left in, they repeat in every chunk of a long
+    document, competing with real content in retrieval and wasting context.
+
+    Deliberately conservative: a document needs several pages, and a line must appear on at least
+    half of them (never fewer than 3), before it is treated as page furniture rather than content
+    that legitimately repeats a couple of times.
+    """
+    if len(pages) < 4:
+        return pages
+    page_lines = [page.split("\n") for page in pages]
+    counts: Counter[str] = Counter()
+    for lines in page_lines:
+        for key in {_boilerplate_key(line.strip()) for line in lines} - {""}:
+            counts[key] += 1
+    threshold = max(3, len(pages) // 2)
+    repeated = {key for key, n in counts.items() if n >= threshold}
+    if not repeated:
+        return pages
+    return [
+        "\n".join(line for line in lines if _boilerplate_key(line.strip()) not in repeated)
+        for lines in page_lines
+    ]
+
+
 MIN_PAGE_CHARS = 20  # a page with less text than this is treated as scanned
 RENDER_DPI = 250  # resolution pages are rendered at before OCR
+
+_BOLD_FONT = re.compile(r"bold|black|heavy|semibold", re.IGNORECASE)
+_HEADING_SIZE_RATIO = 1.15  # a line set this much larger than the page's body text is a heading
+_BOLD_HEADING_SIZE_RATIO = 0.95  # bold text need not be larger, just not smaller, than body text
+_TABULAR_MIN_GAP = 15  # points; how clear of its neighbour a word must sit to count as a "column"
+
+
+def _line_record(line: dict[str, Any]) -> dict[str, Any]:
+    """A pdfplumber text-line dict, reduced to what heading detection and column order need."""
+    chars = line.get("chars") or []
+    sizes = [c["size"] for c in chars if c.get("size")]
+    size = statistics.median(sizes) if sizes else 0.0
+    bold = bool(chars) and sum(1 for c in chars if _BOLD_FONT.search(c.get("fontname") or "")) > len(
+        chars
+    ) / 2
+    return {
+        "top": float(line["top"]),
+        "x0": float(line["x0"]),
+        "x1": float(line["x1"]),
+        "text": str(line["text"]),
+        "size": size,
+        "bold": bold,
+    }
+
+
+def _chars_to_record(chars: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rebuild a line record straight from characters (used only for a piece split out of a merged
+    line below, where pdfplumber's own ready-made `text` no longer applies to just that piece).
+
+    Characters carry no explicit space glyphs, so a space is inserted wherever the gap to the next
+    character is wider than ordinary letter spacing - the same signal `_split_line_at_column_gap`
+    uses to find the column break in the first place.
+    """
+    ordered = sorted(chars, key=lambda c: c["x0"])
+    sizes = [c["size"] for c in ordered if c.get("size")]
+    size = statistics.median(sizes) if sizes else 0.0
+    bold = sum(1 for c in ordered if _BOLD_FONT.search(c.get("fontname") or "")) > len(ordered) / 2
+    parts = [ordered[0]["text"]]
+    for prev, cur in zip(ordered, ordered[1:], strict=False):
+        threshold = max(1.0, (cur.get("size") or size or 1.0) * 0.15)
+        if cur["x0"] - prev["x1"] > threshold:
+            parts.append(" ")
+        parts.append(cur["text"])
+    return {
+        "top": min(c["top"] for c in ordered),
+        "x0": ordered[0]["x0"],
+        "x1": ordered[-1]["x1"],
+        "text": "".join(parts),
+        "size": size,
+        "bold": bold,
+    }
+
+
+_COLUMN_GAP_MIN = 30.0  # points; a gap this wide within one "line" signals two side-by-side columns
+_COLUMN_GAP_SLACK = 60.0  # points either side of the midline that a gap can straddle and still count
+
+
+def _split_line_at_column_gap(line: dict[str, Any], mid: float) -> list[dict[str, Any]]:
+    """`extract_text_lines()` merges same-row text across columns into a single line (it groups
+    purely by vertical position), which would hide a two-column layout before `_reading_order` ever
+    sees it. Split such a line back into a left and right piece when it has an unusually wide gap
+    that straddles the page's midline; an ordinary line, with only normal word-spacing gaps, comes
+    back as a single record, exactly as `_line_record` would have produced before this fix.
+    """
+    chars = line.get("chars") or []
+    if len(chars) < 4:
+        return [_line_record(line)]
+    ordered = sorted(chars, key=lambda c: c["x0"])
+    gap, split_at = max(
+        ((ordered[i]["x0"] - ordered[i - 1]["x1"], i) for i in range(1, len(ordered))),
+        key=lambda item: item[0],
+    )
+    boundary = (ordered[split_at - 1]["x1"] + ordered[split_at]["x0"]) / 2
+    if gap < _COLUMN_GAP_MIN or not (mid - _COLUMN_GAP_SLACK <= boundary <= mid + _COLUMN_GAP_SLACK):
+        return [_line_record(line)]
+    return [_chars_to_record(ordered[:split_at]), _chars_to_record(ordered[split_at:])]
+
+
+def _modal_size(sizes: list[float]) -> float:
+    """The page's most common font size, i.e. its body text - the yardstick headings stand out from."""
+    buckets = Counter(round(s * 2) / 2 for s in sizes if s > 0)
+    return buckets.most_common(1)[0][0] if buckets else 0.0
+
+
+def _is_font_heading(text: str, size: float, bold: bool, body_size: float) -> bool:
+    """A line set in a larger or bold font than the surrounding body text - a heading regardless of
+    wording or casing (unlike the regex patterns below, which only catch numbered/ALL-CAPS style)."""
+    if not text or len(text) > 90 or text.endswith((".", ":", ",")) or len(text.split()) < 2:
+        return False
+    if body_size <= 0:
+        return False
+    return size >= body_size * _HEADING_SIZE_RATIO or (bold and size >= body_size * _BOLD_HEADING_SIZE_RATIO)
+
+
+def _heading_line(record: dict[str, Any], body_size: float) -> str:
+    text = str(record["text"])
+    stripped = text.strip()
+    if _is_font_heading(stripped, record["size"], record["bold"], body_size):
+        return f"# {stripped}"
+    return text
+
+
+def _reading_order(records: list[dict[str, Any]], page_width: float) -> list[dict[str, Any]]:
+    """Left-to-right, top-to-bottom order for a page that may be laid out in two columns.
+
+    An ordinary single-column page is returned unchanged (sorted by vertical position); a page is
+    only treated as two columns when there is clear, separable evidence for it - most lines sitting
+    entirely left or entirely right of the page's midline - so this never reorders a normal page
+    just because a few lines happen to start left of centre.
+    """
+    if len(records) < 6:
+        return sorted(records, key=lambda r: r["top"])
+    mid = page_width / 2
+    margin = 18.0
+    tagged: list[tuple[str, dict[str, Any]]] = []
+    for record in records:
+        if record["x1"] <= mid + margin:
+            tagged.append(("left", record))
+        elif record["x0"] >= mid - margin:
+            tagged.append(("right", record))
+        else:
+            tagged.append(("span", record))
+    left = [r for col, r in tagged if col == "left"]
+    right = [r for col, r in tagged if col == "right"]
+    spanning = [r for col, r in tagged if col == "span"]
+    if len(left) < 3 or len(right) < 3 or len(spanning) > len(records) * 0.5:
+        return sorted(records, key=lambda r: r["top"])
+    # Full-width lines (a heading above two columns) reset the columns, so a title in between two
+    # column blocks does not get stranded after both of them.
+    ordered: list[dict[str, Any]] = []
+    pending_left: list[dict[str, Any]] = []
+    pending_right: list[dict[str, Any]] = []
+    for col, record in sorted(tagged, key=lambda item: item[1]["top"]):
+        if col == "span":
+            ordered += sorted(pending_left, key=lambda r: r["top"])
+            ordered += sorted(pending_right, key=lambda r: r["top"])
+            pending_left, pending_right = [], []
+            ordered.append(record)
+        elif col == "left":
+            pending_left.append(record)
+        else:
+            pending_right.append(record)
+    ordered += sorted(pending_left, key=lambda r: r["top"])
+    ordered += sorted(pending_right, key=lambda r: r["top"])
+    return ordered
+
+
+def _mentions_password(exc: BaseException) -> bool:
+    """Whether a password problem appears anywhere in an exception, its cause chain, or its args.
+
+    pdfplumber/pdfminer wrap the real `PDFPasswordIncorrect` inside a generic `PdfminerException`
+    whose own type name and message say nothing about a password - the original error is only
+    reachable via `.args` (`str(exc)` is empty) - so a plain `"password" in str(exc)` check misses it.
+    """
+    seen: set[int] = set()
+    stack = [exc]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if "password" in type(current).__name__.lower() or "password" in str(current).lower():
+            return True
+        if current.__cause__ is not None:
+            stack.append(current.__cause__)
+        stack.extend(arg for arg in getattr(current, "args", ()) if isinstance(arg, BaseException))
+    return False
+
+
+def _word_rows(page: Any) -> list[list[Any]]:
+    """Words on a page, grouped into visual rows by vertical position, each row left-to-right."""
+    rows: dict[float, list[Any]] = defaultdict(list)
+    for word in page.extract_words():
+        rows[round(word["top"])].append(word)
+    return [sorted(row, key=lambda w: w["x0"]) for _, row in sorted(rows.items())]
+
+
+def _row_groups(row_words: list[Any]) -> list[list[Any]]:
+    """A row's words split into column groups: a run of words with only ordinary word-spacing
+    between them is one group (a cell can itself hold more than one word, e.g. "Monthly Rent"); a
+    gap of `_TABULAR_MIN_GAP` or more starts a new group (a column boundary)."""
+    groups = [[row_words[0]]]
+    for prev, word in zip(row_words, row_words[1:], strict=False):
+        if word["x0"] - prev["x1"] >= _TABULAR_MIN_GAP:
+            groups.append([])
+        groups[-1].append(word)
+    return groups
+
+
+def _looks_tabular(page: Any) -> bool:
+    """A page holds a borderless/whitespace-aligned table the ruled-line detector just missed:
+    several rows whose words fall into three or more clearly separated groups (candidate columns).
+
+    Three, not two: a row with only two groups is indistinguishable from ordinary two-column running
+    text (a label and a value, or the left and right column of a two-column page) - real tables
+    worth recovering this way, in practice, have at least three columns.
+    """
+    if len(page.extract_words()) < 9:
+        return False
+    tabular_rows = sum(1 for row in _word_rows(page) if len(row) >= 2 and len(_row_groups(row)) >= 3)
+    return tabular_rows >= 3
+
+
+def _borderless_table(page: Any) -> tuple[tuple[float, float, float, float], list[list[str]]] | None:
+    """Recover a whitespace-aligned table's rows and columns straight from word gaps.
+
+    Deliberately not `page.find_tables(table_settings={"vertical_strategy": "text", ...})`:
+    pdfplumber's own text-strategy table sizes each column from where words in it *usually* start,
+    then clips extraction to that box - so a cell that happens to run wider than the others in its
+    column (a real name like "Nakamura" under shorter ones like "Vacant") gets silently truncated.
+    Confirmed on the PDF torture corpus's real-style roster, not just a hand-built test case.
+    Clustering by gaps directly avoids that: every word is read in full, wherever it sits.
+    """
+    rows = [row for row in _word_rows(page) if len(row) >= 2 and len(_row_groups(row)) >= 3]
+    if len(rows) < 3:
+        return None
+    grouped = [_row_groups(row) for row in rows]
+    # Column boundaries come from whichever row split into the most columns (usually the header).
+    reference = max(grouped, key=len)
+    centers = [
+        (group[0]["x0"] + group[-1]["x1"]) / 2 for group in reference
+    ]
+    table: list[list[str]] = []
+    all_words = []
+    for groups in grouped:
+        out_row = [""] * len(centers)
+        for group in groups:
+            all_words.extend(group)
+            center = (group[0]["x0"] + group[-1]["x1"]) / 2
+            index = min(range(len(centers)), key=lambda i: abs(center - centers[i]))
+            out_row[index] = " ".join(w["text"] for w in group)
+        table.append(out_row)
+    bbox = (
+        min(w["x0"] for w in all_words),
+        min(w["top"] for w in all_words),
+        max(w["x1"] for w in all_words),
+        max(w["bottom"] for w in all_words),
+    )
+    return bbox, table
 
 
 class PdfLoader(_FileLoader):
     """PDFs.
 
-    `extraction="layout"` (the default) reads tables as Markdown tables and keeps reading order;
-    `"text"` is faster but flattens tables into running text. Pages with no text layer are read with
-    OCR when an OCR engine is configured; otherwise they are flagged (`needs_ocr`).
+    `extraction="layout"` (the default) reads tables as Markdown tables, detects headings by font
+    size/weight as well as wording, and keeps two-column reading order; `"text"` is faster but
+    flattens tables into running text and only catches numbered/ALL-CAPS style headings. Pages with
+    no text layer are read with OCR when an OCR engine is configured; otherwise they are flagged
+    (`needs_ocr`). Encrypted PDFs are read once a `password_env` naming the environment variable that
+    holds the password is set (passwords are never accepted in config, like every other secret).
     """
 
     file_type = "pdf"
 
+    def __init__(
+        self,
+        *,
+        extraction: str = "layout",
+        ocr: OCREngine | None = None,
+        password_env: str | None = None,
+    ) -> None:
+        super().__init__(extraction=extraction, ocr=ocr)
+        self.password_env = password_env
+
+    def _password(self) -> str | None:
+        if not self.password_env:
+            return None
+        value = os.environ.get(self.password_env, "").strip()
+        if not value:
+            raise ConfigError(
+                f"password_env is set to '{self.password_env}' but that environment variable is "
+                "empty or unset (PDF passwords are read from the environment, never from config)."
+            )
+        return value
+
+    def _password_hint(self) -> str:
+        return "" if self.password_env is None else f" (the password in {self.password_env} did not work)"
+
     def _text_pages(self, path: Path) -> tuple[list[str], dict[str, Any]]:
         pypdf = _import("pypdf", "pdf", "pdf")
         reader = pypdf.PdfReader(str(path))
-        if reader.is_encrypted and not reader.decrypt(""):
-            raise ValueError("PDF is password-protected")
+        if reader.is_encrypted and not reader.decrypt(self._password() or ""):
+            raise ValueError(f"PDF is password-protected{self._password_hint()}")
         pages = [(page.extract_text() or "").strip() for page in reader.pages]
         return pages, {"title": reader.metadata.title if reader.metadata else ""}
 
     def _layout_pages(self, path: Path) -> tuple[list[str], dict[str, Any]]:
         pdfplumber = _import("pdfplumber", "pdf", "pdf")
+        password = self._password() or ""  # outside the try: a ConfigError here is not "encrypted"
         try:
-            pdf = pdfplumber.open(str(path))
+            pdf = pdfplumber.open(str(path), password=password)
         except Exception as exc:
-            if "password" in type(exc).__name__.lower():
-                raise ValueError("PDF is password-protected") from exc
+            if _mentions_password(exc):
+                raise ValueError(f"PDF is password-protected{self._password_hint()}") from exc
             raise
         with pdf:
             pages = [self._layout_page(page) for page in pdf.pages]
@@ -171,8 +486,15 @@ class PdfLoader(_FileLoader):
 
     @staticmethod
     def _layout_page(page: Any) -> str:
-        tables = page.find_tables()
-        boxes = [t.bbox for t in tables]
+        ruled = page.find_tables()
+        if ruled:
+            tables = [(t.bbox, [[cell or "" for cell in row] for row in t.extract()]) for t in ruled]
+        elif _looks_tabular(page):
+            found = _borderless_table(page)
+            tables = [found] if found is not None else []
+        else:
+            tables = []
+        boxes = [bbox for bbox, _ in tables]
 
         def outside_tables(obj: dict[str, Any]) -> bool:
             return not any(
@@ -184,21 +506,57 @@ class PdfLoader(_FileLoader):
             )
 
         body = page.filter(outside_tables) if boxes else page
-        items: list[tuple[float, str]] = [
-            (float(line["top"]), str(line["text"])) for line in body.extract_text_lines()
-        ]
-        for table in tables:
-            rows = [[cell or "" for cell in row] for row in table.extract()]
-            markdown = to_markdown_table(rows)
-            if markdown:
-                items.append((float(table.bbox[1]), f"\n{markdown}\n"))
-        items.sort(key=lambda item: item[0])
-        return "\n".join(text for _, text in items).strip()
+        lines = body.extract_text_lines()
+
+        if tables:
+            # A table anchors the page to a single reading column; keep the simple top-to-bottom
+            # merge so the table's position relative to the surrounding text stays correct (a page
+            # that mixes a ruled table with genuine two-column text is rare and out of scope here).
+            records = [_line_record(line) for line in lines]
+            body_size = _modal_size([r["size"] for r in records])
+            items: list[tuple[float, str]] = [
+                (r["top"], _heading_line(r, body_size)) for r in records
+            ]
+            for bbox, rows in tables:
+                markdown = to_markdown_table(rows)
+                if markdown:
+                    items.append((float(bbox[1]), f"\n{markdown}\n"))
+            items.sort(key=lambda item: item[0])
+            return "\n".join(text for _, text in items).strip()
+
+        mid = float(page.width) / 2
+        records = [record for line in lines for record in _split_line_at_column_gap(line, mid)]
+        body_size = _modal_size([r["size"] for r in records])
+        ordered = _reading_order(records, float(page.width))
+        return "\n".join(_heading_line(r, body_size) for r in ordered).strip()
+
+    def _form_fields(self, path: Path) -> list[tuple[str, str]]:
+        pypdf = _import("pypdf", "pdf", "pdf")
+        reader = pypdf.PdfReader(str(path))
+        if reader.is_encrypted and not reader.decrypt(self._password() or ""):
+            return []  # already reported as an error by the main extraction path
+        try:
+            fields = reader.get_fields() or {}
+        except Exception:
+            return []
+        out = []
+        for name, field in fields.items():
+            value = field.get("/V") if hasattr(field, "get") else None
+            if value:
+                out.append((str(name), str(value)))
+        return out
 
     def _extract(self, path: Path) -> tuple[list[str], dict[str, Any]]:
-        if self.extraction == "text":
-            return self._text_pages(path)
-        return self._layout_pages(path)
+        pages, meta = self._text_pages(path) if self.extraction == "text" else self._layout_pages(path)
+        fields = self._form_fields(path)
+        if fields:
+            appendix = "\n".join(f"- **{name}:** {value}" for name, value in fields)
+            if pages:
+                pages = [*pages[:-1], f"{pages[-1]}\n\n## Form fields\n\n{appendix}"]
+            else:
+                pages = [f"## Form fields\n\n{appendix}"]
+            meta["form_fields"] = len(fields)
+        return pages, meta
 
     def _render(self, path: Path, indexes: list[int]) -> dict[int, Any]:
         pdfium = _import("pypdfium2", "pdf", "pdf")
@@ -211,6 +569,7 @@ class PdfLoader(_FileLoader):
     async def load(self, location: str) -> AsyncIterator[Document]:
         path = Path(location)
         pages, meta = await asyncio.to_thread(self._extract, path)
+        pages = strip_repeated_lines(pages)
         meta["pages"] = len(pages)
         blank = [i for i, text in enumerate(pages) if len(text.strip()) < MIN_PAGE_CHARS]
         if blank and self.ocr is not None:

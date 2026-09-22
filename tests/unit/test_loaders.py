@@ -11,9 +11,19 @@ from heka.rag.adapters.loaders import (
     TextLoader,
     XlsxLoader,
     promote_headings,
+    strip_repeated_lines,
     to_markdown_table,
 )
-from pdf_helpers import make_pdf, make_pdf_from_streams, table_page_stream
+from pdf_helpers import (
+    borderless_table_stream,
+    heading_body_stream,
+    make_encrypted_pdf,
+    make_pdf,
+    make_pdf_from_streams,
+    make_pdf_with_form_field,
+    table_page_stream,
+    two_column_stream,
+)
 
 
 async def load_one(loader, path):
@@ -319,3 +329,197 @@ async def test_real_ocr_recovers_a_scanned_pdf(tmp_path):
     with_ocr = await load_one(PdfLoader(ocr=registry.create("ocr", "rapidocr")), path)
     assert "notice period is thirty days" in with_ocr.text.lower()
     assert with_ocr.metadata["ocr_pages"] == 1 and "needs_ocr" not in with_ocr.metadata
+
+
+# -- PDF resolver: font-size headings, header/footer stripping, columns, passwords, tables, forms --
+# Each fix is additive to the pipeline above: every existing PDF test in this file still exercises
+# the unchanged code paths (short documents, ruled tables, single-column pages) untouched.
+
+
+async def test_font_size_heading_is_detected_without_matching_any_regex(tmp_path):
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "irs.pdf"
+    body = [
+        "Employers must withhold federal income tax from wages paid to employees.",
+        "The amount withheld depends on the employee's Form W-4 and pay frequency.",
+        "Deposit the withheld tax according to your deposit schedule.",
+    ]
+    # Real, mixed-case wording that none of the numbered/section/ALL-CAPS regexes would catch -
+    # the confirmed root cause this fix exists for (a real IRS publication heading).
+    path.write_bytes(make_pdf_from_streams([heading_body_stream("Federal Income Tax Withholding", body)]))
+    layout = await load_one(PdfLoader(extraction="layout"), path)
+    assert "# Federal Income Tax Withholding" in layout.text
+
+    # extraction="text" has no font data, so it falls back to regex only, as documented: the
+    # heading is read fine, just not promoted. This is the pre-existing, unchanged behaviour.
+    flattened = await load_one(PdfLoader(extraction="text"), path)
+    assert "Federal Income Tax Withholding" in flattened.text
+    assert "# Federal Income Tax Withholding" not in flattened.text
+
+
+async def test_bold_heading_at_body_text_size_is_detected(tmp_path):
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "policy.pdf"
+    body = [
+        "This paragraph explains the policy in plain, regular-weight text.",
+        "It continues for a couple more lines so body size is unambiguous.",
+        "A third line keeps the body text the clear majority on the page.",
+    ]
+    path.write_bytes(
+        make_pdf_from_streams([heading_body_stream("Remote Work Guidelines", body, bold=True, size=11)])
+    )
+    loaded = await load_one(PdfLoader(extraction="layout"), path)
+    assert "# Remote Work Guidelines" in loaded.text
+
+
+async def test_font_heading_detection_does_not_promote_ordinary_emphasis(tmp_path):
+    """A short bold run inside an otherwise normal line must not turn the whole line into a heading -
+    only a line that is *itself* set larger/bolder than the page's body text should qualify."""
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "memo.pdf"
+    body = [
+        "Please submit the form by Friday.",
+        "Late submissions will not be accepted this quarter.",
+        "Contact HR with any questions about the process.",
+    ]
+    path.write_bytes(make_pdf_from_streams([heading_body_stream("Reminder", body, size=11)]))
+    loaded = await load_one(PdfLoader(extraction="layout"), path)
+    assert "# Reminder" not in loaded.text  # same size as body, not bold: not a heading
+
+
+def test_strip_repeated_lines_needs_several_pages():
+    pages = ["Header\nBody one.", "Header\nBody two.", "Header\nBody three."]
+    assert strip_repeated_lines(pages) == pages  # only 3 pages: left alone
+
+
+def test_strip_repeated_lines_removes_headers_and_normalises_page_numbers():
+    pages = [f"ACME CORP - CONFIDENTIAL\nBody content {i}.\nPage {i} of 5" for i in range(1, 6)]
+    cleaned = strip_repeated_lines(pages)
+    assert all("ACME CORP" not in page for page in cleaned)
+    assert all("Page" not in page for page in cleaned)  # "Page # of #" matched on every page
+    assert all(f"Body content {i}." in cleaned[i - 1] for i in range(1, 6))
+
+
+async def test_running_header_and_footer_are_stripped_from_a_real_pdf(tmp_path):
+    pytest.importorskip("pypdf")
+    path = tmp_path / "handbook.pdf"
+    pages = [
+        f"ACME CORP - CONFIDENTIAL\nSection {i} covers a different topic each page.\nPage {i} of 4"
+        for i in range(1, 5)
+    ]
+    path.write_bytes(make_pdf(pages))
+    loaded = await load_one(PdfLoader(extraction="text"), path)
+    assert "ACME CORP - CONFIDENTIAL" not in loaded.text
+    assert "Page 1 of 4" not in loaded.text
+    for i in range(1, 5):
+        assert f"Section {i} covers a different topic each page." in loaded.text
+
+
+def test_reading_order_two_columns_reset_at_a_spanning_heading():
+    from heka.rag.adapters.loaders import _reading_order
+
+    records = [
+        {"top": 0, "x0": 72, "x1": 500, "text": "Title", "size": 16, "bold": True},  # spans
+        {"top": 20, "x0": 72, "x1": 200, "text": "L1", "size": 11, "bold": False},
+        {"top": 40, "x0": 72, "x1": 200, "text": "L2", "size": 11, "bold": False},
+        {"top": 60, "x0": 72, "x1": 200, "text": "L3", "size": 11, "bold": False},
+        {"top": 25, "x0": 320, "x1": 450, "text": "R1", "size": 11, "bold": False},
+        {"top": 45, "x0": 320, "x1": 450, "text": "R2", "size": 11, "bold": False},
+        {"top": 65, "x0": 320, "x1": 450, "text": "R3", "size": 11, "bold": False},
+    ]
+    ordered = [r["text"] for r in _reading_order(records, page_width=612)]
+    assert ordered == ["Title", "L1", "L2", "L3", "R1", "R2", "R3"]
+
+
+def test_reading_order_leaves_a_single_column_page_alone():
+    from heka.rag.adapters.loaders import _reading_order
+
+    records = [
+        {"top": i * 10, "x0": 72, "x1": 300, "text": f"line{i}", "size": 11, "bold": False}
+        for i in range(8)
+    ]
+    ordered = _reading_order(records, page_width=612)
+    assert [r["text"] for r in ordered] == [f"line{i}" for i in range(8)]
+
+
+async def test_two_column_page_is_read_left_column_then_right_column(tmp_path):
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "briefing.pdf"
+    left = [f"Left para {i} text." for i in range(1, 5)]
+    right = [f"Right para {i} text." for i in range(1, 5)]
+    path.write_bytes(make_pdf_from_streams([two_column_stream("Quarterly Briefing", left, right)]))
+    loaded = await load_one(PdfLoader(extraction="layout"), path)
+    text = loaded.text
+    assert text.index("Quarterly Briefing") < text.index(left[0])
+    for a, b in zip(left, left[1:], strict=False):
+        assert text.index(a) < text.index(b)  # left column stays in top-to-bottom order
+    for a, b in zip(right, right[1:], strict=False):
+        assert text.index(a) < text.index(b)  # right column stays in top-to-bottom order
+    assert text.index(left[-1]) < text.index(right[0])  # the whole left column comes first
+
+
+async def test_borderless_table_is_recovered_by_the_fallback_strategy(tmp_path):
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "roster.pdf"
+    rows = [
+        ["Name", "Age", "City"],
+        ["Alice", "34", "Boston"],
+        ["Bob", "29", "Denver"],
+        ["Carol", "41", "Austin"],
+    ]
+    path.write_bytes(make_pdf_from_streams([borderless_table_stream(rows)]))
+    loaded = await load_one(PdfLoader(extraction="layout"), path)
+    assert "| Name | Age | City |" in loaded.text
+    assert "| Alice | 34 | Boston |" in loaded.text
+    assert "| Carol | 41 | Austin |" in loaded.text
+
+
+@pytest.mark.parametrize("extraction", ["layout", "text"])
+async def test_password_protected_pdf_without_password_errors_clearly(tmp_path, extraction):
+    pytest.importorskip("pypdf")
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "locked.pdf"
+    path.write_bytes(make_encrypted_pdf(["Confidential content here."], "letmein"))
+    with pytest.raises(ValueError, match="password-protected"):
+        await load_one(PdfLoader(extraction=extraction), path)
+
+
+@pytest.mark.parametrize("extraction", ["layout", "text"])
+async def test_password_protected_pdf_is_read_with_the_right_password(tmp_path, monkeypatch, extraction):
+    pytest.importorskip("pypdf")
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "locked.pdf"
+    path.write_bytes(make_encrypted_pdf(["Confidential content here.", "Second page too."], "letmein"))
+    monkeypatch.setenv("TEST_PDF_PASSWORD", "letmein")
+    loaded = await load_one(PdfLoader(extraction=extraction, password_env="TEST_PDF_PASSWORD"), path)
+    assert "Confidential content here." in loaded.text
+
+
+async def test_wrong_password_gives_a_clear_error_naming_the_env_var(tmp_path, monkeypatch):
+    pytest.importorskip("pypdf")
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "locked.pdf"
+    path.write_bytes(make_encrypted_pdf(["Confidential content here."], "letmein"))
+    monkeypatch.setenv("TEST_PDF_PASSWORD", "wrong-guess")
+    with pytest.raises(ValueError, match="TEST_PDF_PASSWORD"):
+        await load_one(PdfLoader(password_env="TEST_PDF_PASSWORD"), path)
+
+
+async def test_password_env_set_but_empty_raises_config_error(tmp_path, monkeypatch):
+    pytest.importorskip("pypdf")
+    path = tmp_path / "locked.pdf"
+    path.write_bytes(make_encrypted_pdf(["Confidential content here."], "letmein"))
+    monkeypatch.setenv("TEST_PDF_PASSWORD", "")
+    with pytest.raises(ConfigError, match="TEST_PDF_PASSWORD"):
+        await load_one(PdfLoader(password_env="TEST_PDF_PASSWORD"), path)
+
+
+async def test_acroform_fields_are_appended_as_an_appendix(tmp_path):
+    pytest.importorskip("pypdf")
+    path = tmp_path / "application.pdf"
+    path.write_bytes(make_pdf_with_form_field("Employee application form", "EmployeeName", "Jane Doe"))
+    loaded = await load_one(PdfLoader(extraction="text"), path)
+    assert "## Form fields" in loaded.text
+    assert "EmployeeName" in loaded.text
+    assert "Jane Doe" in loaded.text
+    assert loaded.metadata["form_fields"] == 1
