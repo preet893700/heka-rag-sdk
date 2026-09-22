@@ -181,7 +181,6 @@ heka-rag serve -c hr.yaml --auth jwt                             # REST server (
 * [Evaluation](docs/EVALUATION.md) — metrics, reading a report honestly, checking how documents were read,
   drafting a starter question set, and the full benchmark numbers
 * [Plug-ins](docs/PLUGINS.md) — writing and registering your own loader, store, guardrail or any other stage
-* [Image prompts](docs/IMAGE_PROMPTS.md) — the logo and architecture-diagram prompts above, and how to add them
 
 ## Known limitations
 
