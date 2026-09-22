@@ -1,0 +1,17 @@
+%%{init: {"theme": "base", "themeVariables": {
+  "primaryColor": "#EAF1FE",
+  "primaryBorderColor": "#3B4A9E",
+  "primaryTextColor": "#1E2A5E",
+  "lineColor": "#3B4A9E",
+  "secondaryColor": "#CBF5EF",
+  "secondaryBorderColor": "#2F9E90",
+  "tertiaryColor": "#F5F3FF",
+  "fontFamily": "trebuchet ms, verdana, arial, sans-serif"
+}}}%%
+flowchart LR
+    Docs[📄 Your documents] --> Ingest["KnowledgeBase.ingest()"]
+    Config[⚙️ Your config] --> Ingest
+    Ingest --> Idx[(Index)]
+    Idx --> A["Agent.ask()"]
+    Question[❓ A question] --> A
+    A --> Answer[✅ Answer + checked citations]

@@ -1,0 +1,25 @@
+%%{init: {"theme": "base", "themeVariables": {
+  "primaryColor": "#EAF1FE",
+  "primaryBorderColor": "#3B4A9E",
+  "primaryTextColor": "#1E2A5E",
+  "lineColor": "#3B4A9E",
+  "secondaryColor": "#CBF5EF",
+  "secondaryBorderColor": "#2F9E90",
+  "tertiaryColor": "#F5F3FF",
+  "fontFamily": "trebuchet ms, verdana, arial, sans-serif"
+}}}%%
+flowchart LR
+    Q[Question] --> G1[Input guardrails]
+    G1 --> Cd[Condense follow-up]
+    Cd --> Tf[Rewrite / multi-query / HyDE]
+    Tf --> Rt["Retrieve<br/>(access-filtered)"]
+    Rt --> Fu[Fuse results]
+    Fu --> Rr[Rerank]
+    Rr --> Pa[Expand to parent section]
+    Pa --> G2[Context guardrails]
+    G2 --> Ab{Enough grounding?}
+    Ab -- no --> Dec[Decline, with a reason]
+    Ab -- yes --> An[Answer + verified citations]
+    An --> Vf[Answer verification]
+    Vf --> G3[Output guardrails]
+    G3 --> Out[Final answer]

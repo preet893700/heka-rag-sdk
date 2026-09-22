@@ -1,5 +1,7 @@
 # Releasing
 
+[← back to README](../README.md)
+
 The package is meant for a **private index** (Artifactory, Azure Artifacts, GitLab/GitHub Packages, devpi,
 AWS CodeArtifact, ...). The metadata carries the `Private :: Do Not Upload` classifier, so `twine upload` to
 the public PyPI is refused; a private index ignores it.
