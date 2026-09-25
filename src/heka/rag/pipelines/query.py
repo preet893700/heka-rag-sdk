@@ -337,6 +337,11 @@ class QueryPipeline:
                         embeds,
                     )
                 citations = verified
+                if len(verified) < len(proposed):
+                    warnings.append(
+                        f"{len(proposed) - len(verified)} of {len(proposed)} citations were dropped: "
+                        "their quote was not found in the cited passage"
+                    )
             else:
                 citations = proposed
 

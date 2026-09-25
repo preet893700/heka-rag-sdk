@@ -82,6 +82,7 @@ async def test_mixed_citations_keep_only_the_verified(kb):
 
     answer, _ = await ask(kb, responder)
     assert not answer.abstained and len(answer.citations) == 1 and answer.citations[0].verified
+    assert any("1 of 2 citations were dropped" in w for w in answer.warnings)  # never dropped silently
 
 
 async def test_unverified_citations_can_be_kept_but_flagged(make_config):

@@ -156,6 +156,76 @@ async def test_xlsx_sheets_become_tables(tmp_path):
     assert "| Tier-1 | 180 |" in loaded.text
 
 
+async def test_pptx_text_inside_grouped_shapes_is_kept(tmp_path):
+    pptx = pytest.importorskip("pptx")
+    from pptx.util import Inches
+
+    path = tmp_path / "grouped.pptx"
+    presentation = pptx.Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Process"
+    group = slide.shapes.add_group_shape()
+    box = group.shapes.add_textbox(Inches(1), Inches(2), Inches(3), Inches(1))
+    box.text_frame.text = "Step one: file the form"
+    inner = group.shapes.add_group_shape()
+    nested = inner.shapes.add_textbox(Inches(1), Inches(3), Inches(3), Inches(1))
+    nested.text_frame.text = "Step two: wait 5 days"
+    presentation.save(path)
+
+    loaded = await load_one(PptxLoader(), path)
+    assert "Step one: file the form" in loaded.text
+    assert "Step two: wait 5 days" in loaded.text
+
+
+async def test_xlsx_uncached_formulas_are_not_silently_blank(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    path = tmp_path / "budget.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Budget"
+    sheet.append(["Item", "Cost"])
+    sheet.append(["Rent", 1000])
+    sheet.append(["Food", 400])
+    sheet.append(["Total", "=SUM(B2:B3)"])  # written by a library: no cached result
+    workbook.save(path)
+
+    loaded = await load_one(XlsxLoader(), path)
+    assert "=SUM(B2:B3)" in loaded.text  # the formula is shown rather than an empty cell
+
+
+async def test_xlsx_hidden_sheets_are_labelled(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    path = tmp_path / "hidden.xlsx"
+    workbook = openpyxl.Workbook()
+    workbook.active.title = "Public"
+    workbook.active.append(["Rate", 5])
+    secret = workbook.create_sheet("Old rates")
+    secret.append(["Rate", 3])
+    secret.sheet_state = "hidden"
+    workbook.save(path)
+
+    loaded = await load_one(XlsxLoader(), path)
+    assert "## Sheet: Public" in loaded.text
+    assert "## Sheet: Old rates (hidden)" in loaded.text
+
+
+async def test_docx_headers_and_footers_are_kept_once(tmp_path):
+    docx = pytest.importorskip("docx")
+    path = tmp_path / "policy.docx"
+    document = docx.Document()
+    document.sections[0].header.paragraphs[0].text = "Travel Policy v3 - effective 1 March 2025"
+    document.sections[0].footer.paragraphs[0].text = "Confidential - HR use only"
+    document.add_paragraph("Book flights 14 days ahead.")
+    document.add_page_break()
+    document.add_paragraph("Hotels are capped at 180.")
+    document.save(path)
+
+    loaded = await load_one(DocxLoader(), path)
+    assert "Book flights 14 days ahead." in loaded.text
+    assert loaded.text.count("Travel Policy v3 - effective 1 March 2025") == 1
+    assert loaded.text.count("Confidential - HR use only") == 1
+
+
 class FakeOcr:
     """An OCR engine that 'reads' a fixed string and records what it was given."""
 

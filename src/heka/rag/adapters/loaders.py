@@ -733,7 +733,35 @@ class DocxLoader(_FileLoader):
             elif isinstance(item, Table):
                 rows = [[cell.text for cell in row.cells] for row in item.rows]
                 blocks.append(to_markdown_table(rows))
+        blocks.extend(self._page_furniture(document))
         return "\n\n".join(b for b in blocks if b), {"title": title}
+
+    @staticmethod
+    def _page_furniture(document: Any) -> list[str]:
+        """Text in the page headers and footers (version, effective date, confidentiality...), once each
+        even though every section and page type repeats it - body-only extraction would lose it."""
+        found: dict[str, list[str]] = {"Header": [], "Footer": []}
+        for section in document.sections:
+            for label, parts in (
+                ("Header", (section.header, section.first_page_header, section.even_page_header)),
+                ("Footer", (section.footer, section.first_page_footer, section.even_page_footer)),
+            ):
+                for part in parts:
+                    text = " ".join(p.text.strip() for p in part.paragraphs if p.text.strip())
+                    if text and text not in found[label]:
+                        found[label].append(text)
+        return [f"{label}: {' | '.join(texts)}" for label, texts in found.items() if texts]
+
+
+def _leaf_shapes(shapes: Any) -> Any:
+    """Every shape on a slide in order, looking inside groups (diagrams and SmartArt-style layouts are
+    groups; iterating only the top level skips all the text in them)."""
+    for shape in shapes:
+        inner = getattr(shape, "shapes", None)
+        if inner is not None and getattr(shape, "shape_type", None) == 6:  # MSO_SHAPE_TYPE.GROUP
+            yield from _leaf_shapes(inner)
+        else:
+            yield shape
 
 
 class PptxLoader(_FileLoader):
@@ -747,7 +775,7 @@ class PptxLoader(_FileLoader):
             title_shape = slide.shapes.title
             title = title_shape.text_frame.text.strip() if title_shape is not None else ""
             blocks.append(f"## Slide {number}: {title}" if title else f"## Slide {number}")
-            for shape in slide.shapes:
+            for shape in _leaf_shapes(slide.shapes):
                 if shape == title_shape:
                     continue
                 if getattr(shape, "has_table", False) and shape.has_table:
@@ -775,20 +803,34 @@ class XlsxLoader(_FileLoader):
     def _parse(self, path: Path) -> tuple[str, dict[str, Any]]:
         openpyxl = _import("openpyxl", "office", "xlsx")
         workbook = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        formulas = openpyxl.load_workbook(str(path), read_only=True, data_only=False)
         blocks: list[str] = []
         try:
             for sheet in workbook.worksheets:
+                # A file written by a library (never opened in Excel) has formulas but no cached results, so
+                # the value reads as empty; show the formula text rather than a blank that looks like "no data".
+                raw = formulas[sheet.title].iter_rows(values_only=True)
                 rows = [
-                    ["" if v is None else str(v) for v in row]
-                    for row in sheet.iter_rows(values_only=True)
+                    [_cell_text(v, f) for v, f in zip(row, formula_row, strict=False)]
+                    for row, formula_row in zip(sheet.iter_rows(values_only=True), raw, strict=False)
                 ]
                 table = to_markdown_table(rows)
                 if table:
-                    blocks.append(f"## Sheet: {sheet.title}\n\n{table}")
+                    hidden = " (hidden)" if sheet.sheet_state != "visible" else ""
+                    blocks.append(f"## Sheet: {sheet.title}{hidden}\n\n{table}")
             sheets = len(workbook.worksheets)
         finally:
             workbook.close()
+            formulas.close()
         return "\n\n".join(blocks), {"sheets": sheets}
+
+
+def _cell_text(value: Any, formula: Any) -> str:
+    if value is not None:
+        return str(value)
+    if isinstance(formula, str) and formula.startswith("="):
+        return formula
+    return ""
 
 
 class CsvLoader(_FileLoader):

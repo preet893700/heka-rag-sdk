@@ -7,6 +7,7 @@ until then any minor version may change the public API.
 ## [Unreleased]
 
 ### Fixed
+- Office files: text inside grouped PowerPoint shapes is no longer skipped; Excel formulas without a saved result show the formula instead of a blank cell and hidden sheets are labelled `(hidden)`; Word page headers and footers are kept (once each). Answers now carry a warning when some citations were dropped for failing verification.
 - HTML: text sitting directly inside a `<div>`, `<section>` or `<body>` (not wrapped in a paragraph) was skipped, and inline markup such as `<b>` or `<a>` inserted stray spaces ("Wednes day", "word ,") that could make a correct quote fail the citation check. Both are fixed.
 - PDF: the borderless-table fallback could mistake multi-column or gappy prose for a table and silently drop
   most of the page (up to 22% of a real Federal Register excerpt, 5-10% of several IRS publications). A table
