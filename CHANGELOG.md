@@ -7,6 +7,7 @@ until then any minor version may change the public API.
 ## [Unreleased]
 
 ### Fixed
+- HTML: text sitting directly inside a `<div>`, `<section>` or `<body>` (not wrapped in a paragraph) was skipped, and inline markup such as `<b>` or `<a>` inserted stray spaces ("Wednes day", "word ,") that could make a correct quote fail the citation check. Both are fixed.
 - PDF: the borderless-table fallback could mistake multi-column or gappy prose for a table and silently drop
   most of the page (up to 22% of a real Federal Register excerpt, 5-10% of several IRS publications). A table
   is now accepted only as a run of consecutive rows whose columns line up, text-like cells (running prose,

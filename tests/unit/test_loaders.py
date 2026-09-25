@@ -584,3 +584,43 @@ async def test_three_columns_of_running_text_are_not_read_as_a_table(tmp_path):
         for i in range(12):
             for k in range(5):
                 assert f"c{col}l{i}w{k}" in text
+
+
+async def test_html_inline_markup_adds_no_spaces_to_the_text(tmp_path):
+    """Regression: every inline element got a space around it ("noncitizen ;", "You ' ll", "$ 25 .50"), so
+    the indexed text no longer matched what a model quotes. Block elements must still be separated."""
+    pytest.importorskip("bs4")
+    path = tmp_path / "inline.html"
+    path.write_text(
+        "<html><body><h1>Aid <em>2025</em></h1>"
+        "<p>An eligible <a href='/x'>noncitizen</a>; a <strong>Social Security number</strong>, and $<span>25</span>.50.</p>"
+        "<p>You<em>'</em>ll need 10<sup>th</sup> grade.<br>Second line.</p>"
+        "<ul><li>Item <b>one</b>, also<ul><li>Nested</li></ul></li></ul>"
+        "<table><tr><td>Cost <i>each</i></td><td>$<b>5</b></td></tr></table>"
+        "<div>Block A</div><div>Block B</div></body></html>",
+        encoding="utf-8",
+    )
+    text = (await load_one(HtmlLoader(), path)).text
+    assert "An eligible noncitizen; a Social Security number, and $25.50." in text
+    assert "You'll need 10th grade. Second line." in text
+    assert "- Item one, also" in text and "- Nested" in text
+    assert "| Cost each | $5 |" in text
+    assert "# Aid 2025" in text
+    assert "Block A" in text and "Block B" in text  # separate blocks stay separate
+
+
+async def test_html_text_directly_inside_containers_is_kept(tmp_path):
+    """Regression: text written directly in a <div>/<section> (not inside a <p>) was silently dropped."""
+    pytest.importorskip("bs4")
+    path = tmp_path / "bare.html"
+    path.write_text(
+        "<html><body><h1>Title</h1><div>Fees are waived for veterans.</div>"
+        "<div><span>Call 1-800-555-0100 for help.</span></div>"
+        "<section>Office hours are 9 to 5.<p>A real paragraph.</p>Trailing text after it.</section>"
+        "<nav>Menu</nav></body></html>",
+        encoding="utf-8",
+    )
+    text = (await load_one(HtmlLoader(), path)).text
+    for expected in ("Fees are waived for veterans.", "Call 1-800-555-0100 for help.", "Office hours are 9 to 5.", "A real paragraph.", "Trailing text after it."):
+        assert expected in text
+    assert "Menu" not in text  # navigation is still stripped

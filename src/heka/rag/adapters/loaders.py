@@ -809,6 +809,37 @@ class CsvLoader(_FileLoader):
 _DROP_TAGS = ("script", "style", "noscript", "nav", "footer", "aside", "form", "svg", "template")
 _HEADINGS = {f"h{n}": n for n in range(1, 7)}
 _TEXT_BLOCKS = {"p", "pre", "blockquote", "dt", "dd", "summary", "figcaption"}
+# Elements a browser lays out on their own line: text on either side is separate. Everything else
+# (a, b, strong, em, i, span, sup, sub, code, ...) is inline and must not add or remove a space.
+_BLOCK_TAGS = {
+    "p", "div", "br", "hr", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot",
+    "tr", "td", "th", "blockquote", "pre", "section", "article", "header", "main", "figure",
+    "figcaption", "details", "summary", "address", "fieldset", "h1", "h2", "h3", "h4", "h5", "h6",
+}
+
+
+def _flow_text(node: Any, skip: frozenset[str] = frozenset()) -> str:
+    """An element's text as a browser shows it: inline markup adds no space ("noncitizen" inside a link
+    followed by ";" stays "noncitizen;"), block-level children and line breaks are separated by one.
+
+    `get_text(" ")` puts a space around *every* element, so "eligible <a>noncitizen</a>;" became
+    "eligible noncitizen ;" and "You<em>'</em>ll" became "You ' ll": the model then reads (and quotes)
+    natural text that the indexed text does not contain.
+    """
+    parts: list[str] = []
+    for child in node.children:
+        name = getattr(child, "name", None)
+        if name is None:
+            if type(child).__name__ == "NavigableString":  # not comments, doctypes, CDATA
+                parts.append(str(child))
+        elif name in skip:
+            continue
+        elif name in _BLOCK_TAGS:
+            parts.append(f" {_flow_text(child, skip)} ")
+        else:
+            parts.append(_flow_text(child, skip))
+    return " ".join("".join(parts).split())
+
 
 class HtmlLoader(_FileLoader):
     """HTML pages and wiki exports. Navigation, scripts and footers are stripped."""
@@ -829,34 +860,46 @@ class HtmlLoader(_FileLoader):
         return "\n\n".join(b for b in blocks if b), {"title": title}
 
     def _walk(self, node: Any, blocks: list[str]) -> None:
+        # Text and inline elements that sit directly in a container (a bare <div>, <section>, <body>)
+        # form a run of their own between its block children; without this, "<div>Fees are waived.</div>"
+        # was skipped entirely because only <p>, headings, lists and tables were ever read.
+        run: list[str] = []
+
+        def flush() -> None:
+            text = " ".join("".join(run).split())
+            run.clear()
+            if text:
+                blocks.append(text)
+
         for child in node.children:
             name = getattr(child, "name", None)
             if name is None:
+                if type(child).__name__ == "NavigableString":  # not comments or doctypes
+                    run.append(str(child))
                 continue
+            if name not in _BLOCK_TAGS:  # inline element: part of the surrounding run
+                run.append(_flow_text(child))
+                continue
+            flush()
             if name in _HEADINGS:
-                text = child.get_text(" ", strip=True)
+                text = _flow_text(child)
                 if text:
                     blocks.append(f"{'#' * _HEADINGS[name]} {text}")
             elif name in _TEXT_BLOCKS:
-                text = child.get_text(" ", strip=True)
+                text = _flow_text(child)
                 if text:
                     blocks.append(text)
             elif name == "li":
-                own = " ".join(
-                    part.get_text(" ", strip=True)
-                    if hasattr(part, "get_text")
-                    else str(part).strip()
-                    for part in child.children
-                    if getattr(part, "name", None) not in {"ul", "ol"}
-                ).strip()
+                own = _flow_text(child, skip=frozenset({"ul", "ol"}))
                 if own:
                     blocks.append(f"- {own}")
                 self._walk(child, blocks)
             elif name == "table":
                 rows = [
-                    [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"])]
+                    [_flow_text(cell) for cell in row.find_all(["th", "td"])]
                     for row in child.find_all("tr")
                 ]
                 blocks.append(to_markdown_table(rows))
             else:
                 self._walk(child, blocks)
+        flush()
