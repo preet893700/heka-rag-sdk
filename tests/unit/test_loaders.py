@@ -16,12 +16,15 @@ from heka.rag.adapters.loaders import (
 )
 from pdf_helpers import (
     borderless_table_stream,
+    gappy_prose_ops,
+    gappy_prose_with_table_stream,
     heading_body_stream,
     make_encrypted_pdf,
     make_pdf,
     make_pdf_from_streams,
     make_pdf_with_form_field,
     table_page_stream,
+    three_column_prose_stream,
     two_column_stream,
 )
 
@@ -523,3 +526,61 @@ async def test_acroform_fields_are_appended_as_an_appendix(tmp_path):
     assert "EmployeeName" in loaded.text
     assert "Jane Doe" in loaded.text
     assert loaded.metadata["form_fields"] == 1
+
+
+def _words(prefix: str, count: int) -> list[str]:
+    return [f"{prefix}{i}{c}" for i in range(count) for c in "abc"]
+
+
+async def test_prose_with_wide_gaps_is_not_turned_into_a_table_and_loses_no_words(tmp_path):
+    """Regression: justified multi-column prose was read as a 'table' and most of the page was dropped."""
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "prose.pdf"
+    path.write_bytes(make_pdf_from_streams(["\n".join(gappy_prose_ops(14)).encode()]))
+    text = (await load_one(PdfLoader(extraction="layout"), path)).text
+    assert "| --- |" not in text  # no table invented
+    for word in _words("w", 14):
+        assert word in text, f"{word} was dropped"
+
+
+async def test_prose_above_a_real_borderless_table_keeps_both(tmp_path):
+    pytest.importorskip("pdfplumber")
+    rows = [["Unit", "Monthly Rent", "Occupant"], ["101", "1450", "Vacant"], ["102", "1525", "Nakamura"], ["201", "1610", "Vacant"]]
+    path = tmp_path / "mixed.pdf"
+    path.write_bytes(make_pdf_from_streams([gappy_prose_with_table_stream(10, rows)]))
+    text = (await load_one(PdfLoader(extraction="layout"), path)).text
+    assert "| Unit | Monthly Rent | Occupant |" in text and "| 102 | 1525 | Nakamura |" in text
+    for word in _words("w", 10):
+        assert word in text, f"{word} was dropped"
+
+
+async def test_a_table_rendering_can_never_lose_the_pages_words(tmp_path, monkeypatch):
+    """The safety net: even if a table heuristic misfires and claims the whole page, the words survive."""
+    pytest.importorskip("pdfplumber")
+    from heka.rag.adapters import loaders
+
+    def whole_page_table(page):
+        words = page.extract_words()
+        bbox = (0.0, 0.0, float(page.width), float(page.height))
+        return [(bbox, [[words[0]["text"], "", ""], ["x", "y", "z"], ["p", "q", "r"]])]  # keeps almost nothing
+
+    monkeypatch.setattr(loaders, "_borderless_tables", whole_page_table)
+    path = tmp_path / "prose.pdf"
+    path.write_bytes(make_pdf_from_streams(["\n".join(gappy_prose_ops(8)).encode()]))
+    text = (await load_one(PdfLoader(extraction="layout"), path)).text
+    for word in _words("w", 8):
+        assert word in text, f"{word} was dropped"
+
+
+async def test_three_columns_of_running_text_are_not_read_as_a_table(tmp_path):
+    """Regression: aligned prose columns (the Federal Register's layout) were printed as a 3-column
+    'table' of unrelated sentence fragments. Text must be kept, and no table invented."""
+    pytest.importorskip("pdfplumber")
+    path = tmp_path / "gazette.pdf"
+    path.write_bytes(make_pdf_from_streams([three_column_prose_stream(12)]))
+    text = (await load_one(PdfLoader(extraction="layout"), path)).text
+    assert "| --- |" not in text
+    for col in range(3):
+        for i in range(12):
+            for k in range(5):
+                assert f"c{col}l{i}w{k}" in text

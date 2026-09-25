@@ -13,7 +13,7 @@ import os
 import re
 import statistics
 from collections import Counter, defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
@@ -373,48 +373,116 @@ def _row_groups(row_words: list[Any]) -> list[list[Any]]:
     return groups
 
 
-def _looks_tabular(page: Any) -> bool:
-    """A page holds a borderless/whitespace-aligned table the ruled-line detector just missed:
-    several rows whose words fall into three or more clearly separated groups (candidate columns).
+_ALIGN_TOLERANCE = 6.0  # points; how far two cells' edges may differ and still be "the same column"
+_MIN_TABLE_ROWS = 3
+_MAX_MISSING_WORDS = 0.02  # a table rendering may lose at most this share of a page's words
+_PROSE_CELL_WORDS = 5  # a cell this long is a line of running text, not a table cell
+_PROSE_CELL_SHARE = 0.6  # ...and when most cells are, the "table" is multi-column prose
 
-    Three, not two: a row with only two groups is indistinguishable from ordinary two-column running
-    text (a label and a value, or the left and right column of a two-column page) - real tables
-    worth recovering this way, in practice, have at least three columns.
+
+def _columns_line_up(run: list[list[list[Any]]]) -> bool:
+    """Whether the rows in `run` (each a list of column groups) share three or more columns.
+
+    A real table repeats the same column edges row after row (left-, right- or centre-aligned), while
+    justified prose has wide gaps at different places on every line. Without this check a page of
+    ordinary text with a few wide gaps looks like a table.
     """
-    if len(page.extract_words()) < 9:
-        return False
-    tabular_rows = sum(1 for row in _word_rows(page) if len(row) >= 2 and len(_row_groups(row)) >= 3)
-    return tabular_rows >= 3
+    edges: list[Callable[[list[Any]], float]] = [
+        lambda g: float(g[0]["x0"]),
+        lambda g: float(g[-1]["x1"]),
+        lambda g: float((g[0]["x0"] + g[-1]["x1"]) / 2),
+    ]
+    for edge in edges:
+        buckets: Counter[int] = Counter()
+        for groups in run:
+            hit = {round(edge(g) / _ALIGN_TOLERANCE) for g in groups}
+            buckets.update(hit | {b + 1 for b in hit})  # neighbours: an edge near a bucket boundary
+        needed = max(_MIN_TABLE_ROWS, -(-len(run) * 6 // 10))  # in at least 60% of the rows
+        if sum(1 for n in buckets.values() if n >= needed) >= 6:  # each real column counts twice
+            return True
+    return False
 
 
-def _borderless_table(page: Any) -> tuple[tuple[float, float, float, float], list[list[str]]] | None:
-    """Recover a whitespace-aligned table's rows and columns straight from word gaps.
+def _borderless_tables(
+    page: Any,
+) -> list[tuple[tuple[float, float, float, float], list[list[str]]]]:
+    """Recover whitespace-aligned tables' rows and columns straight from word gaps.
+
+    Each table is a *run of consecutive text rows* that split into three or more column groups and
+    whose columns line up. Consecutive matters: a box drawn from the first to the last table-looking
+    row on a page would also swallow the prose lines between them (and, since only table rows are
+    written out, silently delete them).
 
     Deliberately not `page.find_tables(table_settings={"vertical_strategy": "text", ...})`:
     pdfplumber's own text-strategy table sizes each column from where words in it *usually* start,
-    then clips extraction to that box - so a cell that happens to run wider than the others in its
-    column (a real name like "Nakamura" under shorter ones like "Vacant") gets silently truncated.
-    Confirmed on the PDF torture corpus's real-style roster, not just a hand-built test case.
-    Clustering by gaps directly avoids that: every word is read in full, wherever it sits.
+    then clips extraction to that box - so a cell that runs wider than the others in its column (a
+    real name like "Nakamura" under shorter ones like "Vacant") is silently truncated. Clustering by
+    gaps reads every word in full, wherever it sits.
     """
-    rows = [row for row in _word_rows(page) if len(row) >= 2 and len(_row_groups(row)) >= 3]
-    if len(rows) < 3:
-        return None
-    grouped = [_row_groups(row) for row in rows]
-    # Column boundaries come from whichever row split into the most columns (usually the header).
-    reference = max(grouped, key=len)
-    centers = [
-        (group[0]["x0"] + group[-1]["x1"]) / 2 for group in reference
+    rows = _word_rows(page)
+    grouped = [_row_groups(row) if len(row) >= 2 else None for row in rows]
+    tables: list[tuple[tuple[float, float, float, float], list[list[str]]]] = []
+    index = 0
+    while index < len(rows):
+        if grouped[index] is None or len(grouped[index] or []) < 3:
+            index += 1
+            continue
+        end = index
+        while end + 1 < len(rows) and len(grouped[end + 1] or []) >= 3:
+            end += 1
+        run = [g for g in grouped[index : end + 1] if g is not None]
+        tables.extend(_table_from_run(part) for part in _aligned_parts(run))
+        index = end + 1
+    return tables
+
+
+def _aligned_parts(run: list[list[list[Any]]]) -> list[list[list[list[Any]]]]:
+    """The stretches of `run` whose rows share columns. A table sitting right under a paragraph of
+    gappy prose forms one long run of "wide-gap" rows; only the table's own rows line up, so cut the
+    run down to those (every window of three rows that lines up extends the current stretch)."""
+    parts: list[list[list[list[Any]]]] = []
+    start: int | None = None
+    for i in range(len(run) - _MIN_TABLE_ROWS + 1):
+        if _columns_line_up(run[i : i + _MIN_TABLE_ROWS]):
+            start = i if start is None else start
+            end = i + _MIN_TABLE_ROWS
+            if i + 1 >= len(run) - _MIN_TABLE_ROWS + 1 or not _columns_line_up(
+                run[i + 1 : i + 1 + _MIN_TABLE_ROWS]
+            ):
+                parts.append(run[start:end])
+                start = None
+    return [
+        part
+        for part in parts
+        if len(part) >= _MIN_TABLE_ROWS and _columns_line_up(part) and not _looks_like_prose(part)
     ]
+
+
+def _looks_like_prose(part: list[list[list[Any]]]) -> bool:
+    """Columns of running text also line up (a newspaper-style or three-column page), but a table's
+    cells are short and discrete while a text column's lines each run to five or more words. Reading
+    such a page as a table would print unrelated sentence fragments side by side, so leave it as text."""
+    cells = [group for groups in part for group in groups]
+    long_cells = sum(1 for group in cells if len(group) >= _PROSE_CELL_WORDS)
+    return long_cells / len(cells) >= _PROSE_CELL_SHARE
+
+
+def _table_from_run(
+    run: list[list[list[Any]]],
+) -> tuple[tuple[float, float, float, float], list[list[str]]]:
+    # Column positions come from whichever row split into the most columns (usually the header).
+    reference = max(run, key=len)
+    centers = [(group[0]["x0"] + group[-1]["x1"]) / 2 for group in reference]
     table: list[list[str]] = []
-    all_words = []
-    for groups in grouped:
+    all_words: list[Any] = []
+    for groups in run:
         out_row = [""] * len(centers)
         for group in groups:
             all_words.extend(group)
             center = (group[0]["x0"] + group[-1]["x1"]) / 2
             index = min(range(len(centers)), key=lambda i: abs(center - centers[i]))
-            out_row[index] = " ".join(w["text"] for w in group)
+            text = " ".join(w["text"] for w in group)
+            out_row[index] = f"{out_row[index]} {text}" if out_row[index] else text
         table.append(out_row)
     bbox = (
         min(w["x0"] for w in all_words),
@@ -423,6 +491,16 @@ def _borderless_table(page: Any) -> tuple[tuple[float, float, float, float], lis
         max(w["bottom"] for w in all_words),
     )
     return bbox, table
+
+
+def _missing_word_share(page: Any, rendered: str) -> float:
+    """Share of the page's words that do not appear in `rendered` (Markdown decoration ignored)."""
+    raw = Counter(w["text"] for w in page.extract_words())
+    total = sum(raw.values())
+    if not total:
+        return 0.0
+    have = Counter(re.findall(r"[^\s|]+", rendered))
+    return sum((raw - have).values()) / total
 
 
 class PdfLoader(_FileLoader):
@@ -489,11 +567,20 @@ class PdfLoader(_FileLoader):
         ruled = page.find_tables()
         if ruled:
             tables = [(t.bbox, [[cell or "" for cell in row] for row in t.extract()]) for t in ruled]
-        elif _looks_tabular(page):
-            found = _borderless_table(page)
-            tables = [found] if found is not None else []
         else:
-            tables = []
+            tables = _borderless_tables(page)
+        if tables:
+            rendered = PdfLoader._render_page(page, tables)
+            # Safety net: a table rendering must never lose the page's words. If it does (a table
+            # heuristic misfired, a merged cell was dropped), keep the text and give up the structure.
+            if _missing_word_share(page, rendered) <= _MAX_MISSING_WORDS:
+                return rendered
+        return PdfLoader._render_page(page, [])
+
+    @staticmethod
+    def _render_page(
+        page: Any, tables: list[tuple[tuple[float, float, float, float], list[list[str]]]]
+    ) -> str:
         boxes = [bbox for bbox, _ in tables]
 
         def outside_tables(obj: dict[str, Any]) -> bool:
@@ -722,7 +809,6 @@ class CsvLoader(_FileLoader):
 _DROP_TAGS = ("script", "style", "noscript", "nav", "footer", "aside", "form", "svg", "template")
 _HEADINGS = {f"h{n}": n for n in range(1, 7)}
 _TEXT_BLOCKS = {"p", "pre", "blockquote", "dt", "dd", "summary", "figcaption"}
-
 
 class HtmlLoader(_FileLoader):
     """HTML pages and wiki exports. Navigation, scripts and footers are stripped."""

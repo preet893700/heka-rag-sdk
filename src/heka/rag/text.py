@@ -5,22 +5,32 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from typing import Any
 
 from heka.rag.types import Chunk
 
+# Quote checking compares what a model wrote against what the source says, so any character that looks
+# the same but is a different code point must fold to one form. Models and PDF/HTML extraction differ
+# here constantly: a model may write a non-breaking hyphen (U+2011) where the page has "-", a PDF may
+# carry soft hyphens or zero-width spaces, and "é" can be one code point or two.
+_DASHES = "‐‑‒–—―−﹘﹣－"  # hyphens, dashes, minus
+_SINGLE_QUOTES = "‘’‚‛′ʼ´`"
+_DOUBLE_QUOTES = "“”„‟″«»"
+_INVISIBLE = "­​‌‍⁠﻿‎‏"  # soft hyphen, zero-width, marks
 _PUNCTUATION_FOLD = str.maketrans(
     {
-        "‘": "'",
-        "’": "'",
-        "“": '"',
-        "”": '"',
-        "–": "-",
-        "—": "-",
-        " ": " ",
+        **dict.fromkeys(map(ord, _DASHES), "-"),
+        **dict.fromkeys(map(ord, _SINGLE_QUOTES), "'"),
+        **dict.fromkeys(map(ord, _DOUBLE_QUOTES), '"'),
+        **dict.fromkeys(map(ord, _INVISIBLE), None),
     }
 )
 _MARKDOWN_NOISE = re.compile(r"[*_`|#>]")
+_FOOTNOTE_MARK = re.compile(r"\[\d{1,3}\]")  # "[10]" link or citation markers a model leaves out
+_SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?%)\]])")
+_SPACE_AFTER_OPEN = re.compile(r"([(\[$])\s+")
+_SPACED_APOSTROPHE = re.compile(r"(?<=\w)\s*'\s*(?=\w)")
 _ELLIPSIS = re.compile(r"\.\.\.|…")
 _MIN_QUOTE_CHARS = 4
 
@@ -39,10 +49,17 @@ def normalize_ws(value: str) -> str:
 
 
 def _canonical(value: str, *, strip_markdown: bool) -> str:
-    value = value.translate(_PUNCTUATION_FOLD)
+    # NFKC first: one form for composed/decomposed accents, ligatures, full-width forms, no-break spaces.
+    value = unicodedata.normalize("NFKC", value).translate(_PUNCTUATION_FOLD)
     if strip_markdown:
-        value = _MARKDOWN_NOISE.sub(" ", value)
-    return normalize_ws(value).casefold()
+        value = _FOOTNOTE_MARK.sub(" ", _MARKDOWN_NOISE.sub(" ", value))
+    value = normalize_ws(value)
+    # Extraction can leave spaces around punctuation ("noncitizen ;", "You ' ll") that natural text
+    # (and so a model's quote) does not have; ignore them on both sides.
+    value = _SPACE_BEFORE_PUNCT.sub(r"\1", value)
+    value = _SPACE_AFTER_OPEN.sub(r"\1", value)
+    value = _SPACED_APOSTROPHE.sub("'", value)
+    return value.casefold()
 
 
 def _found_in_order(parts: list[str], haystack: str) -> bool:

@@ -4,6 +4,24 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic versioning once it reaches 1.0;
 until then any minor version may change the public API.
 
+## [Unreleased]
+
+### Fixed
+- PDF: the borderless-table fallback could mistake multi-column or gappy prose for a table and silently drop
+  most of the page (up to 22% of a real Federal Register excerpt, 5-10% of several IRS publications). A table
+  is now accepted only as a run of consecutive rows whose columns line up, text-like cells (running prose,
+  including aligned three-column pages) are never read as a table, and a safety net keeps a page's plain text
+  whenever a table rendering would lose more than 2% of its words.
+- Citation checking rejected correct quotes that differ from the source only by look-alike characters:
+  non-breaking and other Unicode hyphens, minus signs, soft hyphens, zero-width characters, composed vs
+  decomposed accents, and by extraction spacing around punctuation ("noncitizen ;", "You ' ll") or a "[10]"
+  link marker the model left out. Quotes with a different word, number, punctuation mark or meaning are still
+  rejected.
+
+### Added
+- PDF (`extraction: layout`): headings from font size and weight, running headers and footers stripped,
+  two-column reading order, borderless tables, AcroForm fields, and `password_env` for encrypted PDFs.
+
 ## [0.1.0] - 2026-09-22
 
 First tagged version, by Hekaos. See the README for what was measured and what was not.

@@ -76,11 +76,11 @@ def two_column_stream(title: str, left: list[str], right: list[str]) -> bytes:
     return "\n".join(ops).encode()
 
 
-def borderless_table_stream(rows: list[list[str]]) -> bytes:
+def borderless_table_stream(rows: list[list[str]], y0: int = 720) -> bytes:
     """A whitespace-aligned table with no ruled lines, so the default ruled-line detector misses it."""
     x_positions = [72, 220, 380]
     ops = []
-    y = 720
+    y = y0
     for row in rows:
         for cell, x in zip(row, x_positions, strict=False):
             ops.append(f"BT /F1 11 Tf {x} {y} Td ({cell}) Tj ET")
@@ -139,4 +139,38 @@ def table_page_stream(heading: str, rows: list[list[str]], footer: str) -> bytes
                 f"BT /F1 10 Tf {x0 + c * col_width + 6} {y0 - r * row_height - 15} Td ({cell}) Tj ET"
             )
     ops.append(f"BT /F1 12 Tf {x0} {y0 - n_rows * row_height - 40} Td ({footer}) Tj ET")
+    return "\n".join(ops).encode()
+
+
+def gappy_prose_ops(count: int, y0: int = 720, prefix: str = "w") -> list[str]:
+    """Prose lines with wide, irregular gaps between chunks (as in justified multi-column text): each
+    line splits into three groups, but the gaps fall at different x-positions on every line, so it is
+    not a table. Words are unique (`w0a`, `w0b`, ...) so a test can check none was dropped."""
+    ops = []
+    for i in range(count):
+        y = y0 - i * 16
+        for chunk, base in enumerate((72, 190 + (i * 37) % 55, 340 + (i * 53) % 80)):
+            ops.append(f"BT /F1 10 Tf {base} {y} Td ({prefix}{i}{'abc'[chunk]} lorem{i}{chunk}) Tj ET")
+    return ops
+
+
+def gappy_prose_with_table_stream(prose_lines: int, rows: list[list[str]]) -> bytes:
+    """Gappy prose on top, then a genuine borderless table underneath."""
+    ops = gappy_prose_ops(prose_lines)
+    y = 720 - prose_lines * 16 - 30
+    for row in rows:
+        for cell, x in zip(row, (72, 220, 380), strict=False):
+            ops.append(f"BT /F1 11 Tf {x} {y} Td ({cell}) Tj ET")
+        y -= 20
+    return "\n".join(ops).encode()
+
+
+def three_column_prose_stream(lines: int = 12) -> bytes:
+    """Three aligned columns of running text (as in a gazette or newsletter): the columns line up like a
+    table's, but every cell is a full line of prose. Words are unique per column and line."""
+    ops = []
+    for i in range(lines):
+        for col, x in enumerate((72, 235, 400)):
+            words = " ".join(f"c{col}l{i}w{k}" for k in range(5))
+            ops.append(f"BT /F1 8 Tf {x} {720 - i * 14} Td ({words}) Tj ET")
     return "\n".join(ops).encode()
